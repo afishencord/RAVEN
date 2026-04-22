@@ -1,0 +1,239 @@
+from __future__ import annotations
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    full_name: str
+    role: str
+    is_active: bool
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserRead
+
+
+class NodeBase(BaseModel):
+    name: str
+    description: str | None = None
+    environment: str = "prod"
+    host: str
+    port: int | None = None
+    url: str | None = None
+    health_check_type: str = "http"
+    health_check_path: str | None = None
+    expected_status_code: int = 200
+    expected_response_contains: str | None = None
+    check_interval_seconds: int = 60
+    timeout_seconds: int = 5
+    retry_count: int = 3
+    remediation_profile: str
+    execution_target: str
+    is_enabled: bool = True
+
+
+class NodeCreate(NodeBase):
+    pass
+
+
+class NodeUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    environment: str | None = None
+    host: str | None = None
+    port: int | None = None
+    url: str | None = None
+    health_check_type: str | None = None
+    health_check_path: str | None = None
+    expected_status_code: int | None = None
+    expected_response_contains: str | None = None
+    check_interval_seconds: int | None = None
+    timeout_seconds: int | None = None
+    retry_count: int | None = None
+    remediation_profile: str | None = None
+    execution_target: str | None = None
+    is_enabled: bool | None = None
+
+
+class NodeRead(NodeBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    current_status: str
+    last_check_at: datetime | None
+    last_incident_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class HealthCheckRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: str
+    success: bool
+    latency_ms: int | None
+    http_status: int | None
+    error_type: str | None
+    error_detail: str | None
+    response_excerpt: str | None
+    checked_at: datetime
+
+
+class RecommendationAction(BaseModel):
+    action_key: str
+    title: str
+    reason: str
+    priority: str = "medium"
+
+
+class AIRecommendationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: str
+    suspected_issue_classification: str
+    summary: str
+    troubleshooting_steps: list[str]
+    proposed_actions: list[dict]
+    rationale: str
+    model_name: str
+    created_at: datetime
+
+
+class IncidentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    node_id: int
+    status: str
+    severity: str
+    failure_type: str
+    summary: str
+    details_json: dict
+    started_at: datetime
+    last_failure_at: datetime
+    resolved_at: datetime | None
+    acknowledged_at: datetime | None
+    is_active: bool
+
+
+class IncidentNoteCreate(BaseModel):
+    note: str = Field(min_length=1, max_length=2_000)
+
+
+class IncidentNoteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    incident_id: int
+    user_id: int
+    note: str
+    created_at: datetime
+
+
+class RemediationProfileRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str
+    allowed_action_keys: list[str]
+    allowed_targets: list[str]
+    approval_required: bool
+    cooldown_seconds: int
+    retry_limit: int
+    post_action_validation: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExecutionTaskRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    incident_id: int
+    node_id: int
+    profile_id: int
+    action_key: str
+    target: str
+    parameters: dict
+    execution_method: str
+    command_preview: str
+    status: str
+    queued_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    exit_code: int | None
+    output: str | None
+    post_validation_status: str | None
+    retry_count: int
+    requested_by_id: int
+    approved_by_id: int
+
+
+class ApprovalDecisionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    incident_id: int
+    recommendation_id: int | None
+    execution_task_id: int | None
+    action_key: str
+    decision: str
+    note: str | None
+    decided_by_id: int
+    decided_at: datetime
+
+
+class AuditLogRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    actor_user_id: int | None
+    entity_type: str
+    entity_id: str
+    action: str
+    details_json: dict
+    created_at: datetime
+
+
+class NodeDetailRead(BaseModel):
+    node: NodeRead
+    health_checks: list[HealthCheckRead]
+    incidents: list[IncidentRead]
+    recommendations: list[AIRecommendationRead]
+    executions: list[ExecutionTaskRead]
+    approvals: list[ApprovalDecisionRead]
+    remediation_profile: RemediationProfileRead | None
+
+
+class IncidentActionRequest(BaseModel):
+    action_key: str
+    note: str | None = None
+
+
+class MessageIncidentRead(BaseModel):
+    incident: IncidentRead
+    node: NodeRead
+    latest_recommendation: AIRecommendationRead | None
+    notes: list[IncidentNoteRead]
+    executions: list[ExecutionTaskRead]
+    approvals: list[ApprovalDecisionRead]
+
+
+class StatusResponse(BaseModel):
+    status: str

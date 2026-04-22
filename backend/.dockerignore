@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+raven.db
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

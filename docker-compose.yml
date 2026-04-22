@@ -1,0 +1,50 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: raven-backend
+    env_file:
+      - ./.env
+    environment:
+      DATABASE_URL: sqlite:////data/raven.db
+      FRONTEND_ORIGIN: http://localhost:3000
+      EMBEDDED_MONITORING: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - raven-data:/data
+    restart: unless-stopped
+
+  runner:
+    build:
+      context: ./backend
+    container_name: raven-runner
+    command: ["python", "-m", "app.services.execution_runner"]
+    env_file:
+      - ./.env
+    environment:
+      DATABASE_URL: sqlite:////data/raven.db
+      FRONTEND_ORIGIN: http://localhost:3000
+      EMBEDDED_MONITORING: "false"
+    depends_on:
+      - backend
+    volumes:
+      - raven-data:/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api
+    container_name: raven-frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  raven-data:
