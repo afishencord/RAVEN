@@ -4,6 +4,20 @@
 
 :root {
   color-scheme: light;
+  --bg-base: #ece4d8;
+  --text-base: #161b24;
+  --field-bg: #ffffff;
+  --field-text: #161b24;
+  --field-border: #e2e8f0;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg-base: #09090f;
+  --text-base: #f3f4f6;
+  --field-bg: rgba(15, 23, 42, 0.92);
+  --field-text: #f3f4f6;
+  --field-border: rgba(255, 255, 255, 0.12);
 }
 
 * {
@@ -13,8 +27,8 @@
 body {
   margin: 0;
   font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
-  background: #ece4d8;
-  color: #161b24;
+  background: var(--bg-base);
+  color: var(--text-base);
 }
 
 a {
@@ -27,6 +41,20 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+input,
+textarea,
+select,
+option {
+  background-color: var(--field-bg);
+  color: var(--field-text);
+}
+
+input,
+textarea,
+select {
+  border-color: var(--field-border);
 }
 
 pre {

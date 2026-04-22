@@ -83,22 +83,22 @@ export function NodeForm({ profiles, initial, onSubmit, onCancel }: Props) {
         ["Retry Count", "retry_count"],
         ["Execution Target", "execution_target"],
       ].map(([label, key]) => (
-        <label key={key} className="text-sm text-slate-700">
+        <label key={key} className="text-sm text-slate-700 dark:text-slate-200">
           <span className="mb-2 block font-medium">{label}</span>
           <input
             value={String((form as Record<string, unknown>)[key] ?? "")}
             onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
           />
         </label>
       ))}
 
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-slate-700 dark:text-slate-200">
         <span className="mb-2 block font-medium">Health Check Type</span>
         <select
           value={form.health_check_type}
           onChange={(event) => setForm((current) => ({ ...current, health_check_type: event.target.value }))}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember"
+          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
         >
           <option value="ping">ping</option>
           <option value="http">http</option>
@@ -107,12 +107,12 @@ export function NodeForm({ profiles, initial, onSubmit, onCancel }: Props) {
         </select>
       </label>
 
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-slate-700 dark:text-slate-200">
         <span className="mb-2 block font-medium">Remediation Profile</span>
         <select
           value={form.remediation_profile}
           onChange={(event) => setForm((current) => ({ ...current, remediation_profile: event.target.value }))}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember"
+          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
         >
           {profiles.map((profile) => (
             <option key={profile.id} value={profile.name}>
@@ -122,30 +122,30 @@ export function NodeForm({ profiles, initial, onSubmit, onCancel }: Props) {
         </select>
       </label>
 
-      <label className="md:col-span-2 text-sm text-slate-700">
+      <label className="md:col-span-2 text-sm text-slate-700 dark:text-slate-200">
         <span className="mb-2 block font-medium">Description</span>
         <textarea
           value={form.description}
           onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-          className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember"
+          className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
         />
       </label>
 
-      <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
+      <label className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-200">
         <input
           type="checkbox"
           checked={form.is_enabled}
           onChange={(event) => setForm((current) => ({ ...current, is_enabled: event.target.checked }))}
-          className="h-4 w-4 rounded border-slate-300"
+          className="h-4 w-4 rounded border-slate-300 accent-ember"
         />
         Monitoring enabled
       </label>
 
       <div className="md:col-span-2 flex gap-3">
-        <button disabled={saving} className="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white disabled:opacity-60">
+        <button disabled={saving} className="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-ember disabled:opacity-60 dark:bg-ember">
           {saving ? "Saving..." : initial ? "Update Node" : "Create Node"}
         </button>
-        <button type="button" onClick={onCancel} className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700">
+        <button type="button" onClick={onCancel} className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 dark:border-white/15 dark:text-slate-200">
           Cancel
         </button>
       </div>

@@ -96,15 +96,14 @@ export default function DashboardPage() {
       subtitle="Track monitored application nodes, adjust health-check coverage, and manage remediation profiles from one control surface."
     >
       <section className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
-        <div className="rounded-[2rem] border border-white/70 bg-white/70 p-6 shadow-panel backdrop-blur">
+        <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h3 className="text-xl font-semibold">Monitored nodes</h3>
-              <p className="mt-1 text-sm text-slate-600">Filter by live status or disablement state. Click any node for full telemetry and remediation history.</p>
             </div>
             {user.role === "admin" ? (
               <button
-                className="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white"
+                className="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-ember dark:bg-ember"
                 onClick={() => {
                   setEditing(null);
                   setShowForm(true);
@@ -119,7 +118,7 @@ export default function DashboardPage() {
             {filters.map((entry) => (
               <button
                 key={entry}
-                className={`rounded-full px-4 py-2 text-sm font-medium ${filter === entry ? "bg-ink text-white" : "bg-panel text-slate-700"}`}
+                className={`rounded-full px-4 py-2 text-sm font-medium ${filter === entry ? "bg-ink text-white dark:bg-ember" : "bg-panel text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}
                 onClick={() => setFilter(entry)}
               >
                 {entry}
@@ -127,13 +126,13 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {error ? <p className="mt-4 rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900">{error}</p> : null}
-          {loading ? <p className="mt-6 text-sm text-slate-600">Loading nodes...</p> : null}
+          {error ? <p className="mt-4 rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
+          {loading ? <p className="mt-6 text-sm text-slate-600 dark:text-slate-300">Loading nodes...</p> : null}
 
-          <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
+          <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200 dark:border-white/10">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-panel">
-                <tr className="text-left text-slate-500">
+              <thead className="bg-panel dark:bg-white/5">
+                <tr className="text-left text-slate-500 dark:text-slate-300">
                   <th className="px-4 py-3 font-medium">Node</th>
                   <th className="px-4 py-3 font-medium">Check</th>
                   <th className="px-4 py-3 font-medium">Status</th>
@@ -142,41 +141,41 @@ export default function DashboardPage() {
                   <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
+              <tbody className="divide-y divide-slate-200 bg-white dark:divide-white/10 dark:bg-slate-950/35">
                 {filteredNodes.map((node) => (
                   <tr key={node.id}>
                     <td className="px-4 py-4">
                       <Link className="font-semibold text-ink hover:text-ember" href={`/nodes/${node.id}`}>
                         {node.name}
                       </Link>
-                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{node.environment}</p>
-                      <p className="mt-1 text-xs text-slate-500">{node.host}{node.health_check_path ? ` ${node.health_check_path}` : ""}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{node.environment}</p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{node.host}{node.health_check_path ? ` ${node.health_check_path}` : ""}</p>
                     </td>
-                    <td className="px-4 py-4 text-slate-600">
+                    <td className="px-4 py-4 text-slate-600 dark:text-slate-300">
                       <p>{node.health_check_type}</p>
                       <p className="text-xs">{node.url ?? node.execution_target}</p>
                     </td>
                     <td className="px-4 py-4">
                       <StatusBadge status={node.is_enabled ? node.current_status : "disabled"} />
                     </td>
-                    <td className="px-4 py-4 text-slate-600">{node.last_check_at ? new Date(node.last_check_at).toLocaleString() : "Never"}</td>
-                    <td className="px-4 py-4 text-slate-600">{node.last_incident_at ? new Date(node.last_incident_at).toLocaleString() : "None"}</td>
+                    <td className="px-4 py-4 text-slate-600 dark:text-slate-300">{node.last_check_at ? new Date(node.last_check_at).toLocaleString() : "Never"}</td>
+                    <td className="px-4 py-4 text-slate-600 dark:text-slate-300">{node.last_incident_at ? new Date(node.last_incident_at).toLocaleString() : "None"}</td>
                     <td className="px-4 py-4">
                       <div className="flex flex-wrap gap-2">
                         {user.role === "admin" ? (
                           <>
-                            <button className="rounded-full bg-panel px-3 py-2 text-xs font-semibold text-slate-700" onClick={() => { setEditing(node); setShowForm(true); }}>
+                            <button className="rounded-full bg-panel px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200" onClick={() => { setEditing(node); setShowForm(true); }}>
                               Edit
                             </button>
-                            <button className="rounded-full bg-panel px-3 py-2 text-xs font-semibold text-slate-700" onClick={() => toggleNode(node)}>
+                            <button className="rounded-full bg-panel px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200" onClick={() => toggleNode(node)}>
                               {node.is_enabled ? "Disable" : "Enable"}
                             </button>
-                            <button className="rounded-full bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-800" onClick={() => deleteNode(node.id)}>
+                            <button className="rounded-full bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 dark:border dark:border-rose-900" onClick={() => deleteNode(node.id)}>
                               Remove
                             </button>
                           </>
                         ) : (
-                          <span className="text-xs text-slate-500">Read only</span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400">Read only</span>
                         )}
                       </div>
                     </td>
@@ -184,7 +183,7 @@ export default function DashboardPage() {
                 ))}
                 {!filteredNodes.length ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                       No nodes match the current filter.
                     </td>
                   </tr>
@@ -195,7 +194,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-[2rem] border border-white/70 bg-white/70 p-6 shadow-panel backdrop-blur">
+          <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
             <h3 className="text-xl font-semibold">Fleet snapshot</h3>
             <div className="mt-5 grid gap-4">
               {[
@@ -204,22 +203,22 @@ export default function DashboardPage() {
                 ["Down", nodes.filter((node) => node.is_enabled && node.current_status === "down").length.toString()],
                 ["Disabled", nodes.filter((node) => !node.is_enabled).length.toString()],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-3xl bg-panel px-5 py-4">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{label}</p>
+                <div key={label} className="rounded-3xl bg-panel px-5 py-4 dark:bg-white/5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">{label}</p>
                   <p className="mt-2 text-3xl font-semibold">{value}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="rounded-[2rem] border border-white/70 bg-white/70 p-6 shadow-panel backdrop-blur">
+          <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
             <h3 className="text-xl font-semibold">Remediation profiles</h3>
             <div className="mt-4 space-y-4">
               {profiles.map((profile) => (
-                <div key={profile.id} className="rounded-3xl bg-panel p-4">
+                <div key={profile.id} className="rounded-3xl bg-panel p-4 dark:bg-white/5">
                   <p className="font-semibold">{profile.name}</p>
-                  <p className="mt-2 text-sm text-slate-600">{profile.description}</p>
-                  <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{profile.allowed_action_keys.join(" | ")}</p>
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{profile.description}</p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{profile.allowed_action_keys.join(" | ")}</p>
                 </div>
               ))}
             </div>
@@ -228,14 +227,25 @@ export default function DashboardPage() {
       </section>
 
       {showForm ? (
-        <section className="mt-6 rounded-[2rem] border border-white/70 bg-white/80 p-6 shadow-panel backdrop-blur">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-semibold">{editing ? "Edit node" : "Add node"}</h3>
-              <p className="text-sm text-slate-600">Node definitions drive monitoring cadence, AI context, and allowed remediation targeting.</p>
+        <section className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/55 px-4 py-8 backdrop-blur-sm">
+          <div className="max-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-auto rounded-[2rem] border border-white/60 bg-white/95 p-6 shadow-panel dark:border-white/10 dark:bg-slate-950/95">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold">{editing ? "Edit node" : "Add node"}</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-300">Node definitions drive monitoring cadence, AI context, and allowed remediation targeting.</p>
+              </div>
+              <button
+                className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200"
+                onClick={() => {
+                  setShowForm(false);
+                  setEditing(null);
+                }}
+              >
+                Close
+              </button>
             </div>
+            <NodeForm profiles={profiles} initial={editing} onSubmit={saveNode} onCancel={() => { setShowForm(false); setEditing(null); }} />
           </div>
-          <NodeForm profiles={profiles} initial={editing} onSubmit={saveNode} onCancel={() => { setShowForm(false); setEditing(null); }} />
         </section>
       ) : null}
     </AppShell>

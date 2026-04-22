@@ -72,7 +72,7 @@ def approve_remediation(
     recommendation = (
         db.query(AIRecommendation)
         .filter(AIRecommendation.incident_id == incident.id)
-        .order_by(desc(AIRecommendation.created_at))
+        .order_by(desc(AIRecommendation.created_at), desc(AIRecommendation.id))
         .first()
     )
     try:
@@ -100,7 +100,7 @@ def reject_remediation(
     recommendation = (
         db.query(AIRecommendation)
         .filter(AIRecommendation.incident_id == incident.id)
-        .order_by(desc(AIRecommendation.created_at))
+        .order_by(desc(AIRecommendation.created_at), desc(AIRecommendation.id))
         .first()
     )
     try:

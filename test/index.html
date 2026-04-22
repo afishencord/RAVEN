@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RAVEN Test Target</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(139, 92, 246, 0.35), transparent 30%),
+          linear-gradient(180deg, #09090f 0%, #140f23 100%);
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        color: #f5f3ff;
+      }
+
+      main {
+        width: min(680px, calc(100% - 2rem));
+        padding: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 28px;
+        background: rgba(15, 23, 42, 0.6);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+        backdrop-filter: blur(12px);
+      }
+
+      .eyebrow {
+        margin: 0;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: #c4b5fd;
+        font-size: 0.8rem;
+        font-weight: 700;
+      }
+
+      h1 {
+        margin: 1rem 0 0;
+        font-size: clamp(2.25rem, 5vw, 4rem);
+        line-height: 0.95;
+      }
+
+      p {
+        color: #d4d4d8;
+        font-size: 1rem;
+        line-height: 1.7;
+      }
+
+      code {
+        padding: 0.15rem 0.4rem;
+        border-radius: 999px;
+        background: rgba(139, 92, 246, 0.18);
+        color: #e9d5ff;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">RAVEN Test Container</p>
+      <h1>nginx is running on port 6767.</h1>
+      <p>
+        Use this page as a disposable target for agent-triggered checks and response validation.
+        If you can read this, the Compose <code>test</code> service is up.
+      </p>
+    </main>
+  </body>
+</html>

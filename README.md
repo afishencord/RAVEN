@@ -121,6 +121,7 @@ RAVEN can run as three containers:
 - `backend`: FastAPI API plus embedded monitoring loop
 - `runner`: secure execution runner polling approved remediation tasks
 - `frontend`: Next.js UI
+- `test`: simple `nginx` page for agent-response testing on port `6767`
 
 The backend and runner share a named Docker volume for the SQLite database so they operate on the same state.
 
@@ -142,6 +143,7 @@ Open:
 
 - Frontend: `http://localhost:3000`
 - Backend API: `http://localhost:8000`
+- Test page: `http://localhost:6767`
 
 ### 3. Stop the stack
 

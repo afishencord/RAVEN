@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -12,7 +13,7 @@ const config: Config = {
         ink: "#161b24",
         cloud: "#f5efe8",
         panel: "#fffaf4",
-        ember: "#d97706",
+        ember: "#8b5cf6",
         moss: "#2f6f57",
         ruby: "#a63d40",
         haze: "#7b8794",
