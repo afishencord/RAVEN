@@ -8,7 +8,7 @@ import { AppShell } from "@/components/app-shell";
 import { NodeForm } from "@/components/node-form";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch, requireSession } from "@/lib/api";
-import { NodeRecord, RemediationProfile, User } from "@/lib/types";
+import { CredentialRecord, NodeRecord, User } from "@/lib/types";
 
 const filters = ["all", "healthy", "degraded", "down", "disabled"] as const;
 
@@ -16,7 +16,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [nodes, setNodes] = useState<NodeRecord[]>([]);
-  const [profiles, setProfiles] = useState<RemediationProfile[]>([]);
+  const [credentials, setCredentials] = useState<CredentialRecord[]>([]);
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<NodeRecord | null>(null);
@@ -31,13 +31,14 @@ export default function DashboardPage() {
           return;
         }
         setUser(session);
-        Promise.all([
-          apiFetch<NodeRecord[]>("/nodes"),
-          apiFetch<RemediationProfile[]>("/profiles"),
-        ])
-          .then(([nodeData, profileData]) => {
-            setNodes(nodeData);
-            setProfiles(profileData);
+        const requests: Promise<unknown>[] = [apiFetch<NodeRecord[]>("/nodes")];
+        if (session.role === "admin") {
+          requests.push(apiFetch<CredentialRecord[]>("/credentials"));
+        }
+        Promise.all(requests)
+          .then(([nodeData, credentialData]) => {
+            setNodes(nodeData as NodeRecord[]);
+            setCredentials((credentialData as CredentialRecord[]) ?? []);
           })
           .catch((err) => setError(err instanceof Error ? err.message : "Failed to load dashboard"))
           .finally(() => setLoading(false));
@@ -93,14 +94,12 @@ export default function DashboardPage() {
     <AppShell
       user={user}
       title="Node dashboard"
-      subtitle="Track monitored application nodes, adjust health-check coverage, and manage remediation profiles from one control surface."
+      subtitle="Track monitored application nodes, adjust health-check coverage, and manage remediation execution from one control surface."
     >
       <section className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
         <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 className="text-xl font-semibold">Monitored nodes</h3>
-            </div>
+            <h3 className="text-xl font-semibold">Monitored nodes</h3>
             {user.role === "admin" ? (
               <button
                 className="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-ember dark:bg-ember"
@@ -134,10 +133,10 @@ export default function DashboardPage() {
               <thead className="bg-panel dark:bg-white/5">
                 <tr className="text-left text-slate-500 dark:text-slate-300">
                   <th className="px-4 py-3 font-medium">Node</th>
-                  <th className="px-4 py-3 font-medium">Check</th>
+                  <th className="px-4 py-3 font-medium">Execution</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Last Check</th>
-                  <th className="px-4 py-3 font-medium">Last Incident</th>
+                  <th className="px-4 py-3 font-medium">Context</th>
                   <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -145,21 +144,23 @@ export default function DashboardPage() {
                 {filteredNodes.map((node) => (
                   <tr key={node.id}>
                     <td className="px-4 py-4">
-                      <Link className="font-semibold text-ink hover:text-ember" href={`/nodes/${node.id}`}>
+                      <Link className="font-semibold text-ink hover:text-ember dark:text-white" href={`/nodes/${node.id}`}>
                         {node.name}
                       </Link>
                       <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{node.environment}</p>
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{node.host}{node.health_check_path ? ` ${node.health_check_path}` : ""}</p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{node.host}{node.port ? `:${node.port}` : ""}</p>
                     </td>
                     <td className="px-4 py-4 text-slate-600 dark:text-slate-300">
-                      <p>{node.health_check_type}</p>
-                      <p className="text-xs">{node.url ?? node.execution_target}</p>
+                      <p className="font-medium">{node.execution_mode}</p>
+                      <p className="text-xs">{node.execution_target}</p>
                     </td>
                     <td className="px-4 py-4">
                       <StatusBadge status={node.is_enabled ? node.current_status : "disabled"} />
                     </td>
                     <td className="px-4 py-4 text-slate-600 dark:text-slate-300">{node.last_check_at ? new Date(node.last_check_at).toLocaleString() : "Never"}</td>
-                    <td className="px-4 py-4 text-slate-600 dark:text-slate-300">{node.last_incident_at ? new Date(node.last_incident_at).toLocaleString() : "None"}</td>
+                    <td className="px-4 py-4 text-slate-600 dark:text-slate-300">
+                      <p className="line-clamp-3 text-xs">{node.context_text ?? "No context configured."}</p>
+                    </td>
                     <td className="px-4 py-4">
                       <div className="flex flex-wrap gap-2">
                         {user.role === "admin" ? (
@@ -198,10 +199,10 @@ export default function DashboardPage() {
             <h3 className="text-xl font-semibold">Fleet snapshot</h3>
             <div className="mt-5 grid gap-4">
               {[
-                ["Healthy", nodes.filter((node) => node.is_enabled && node.current_status === "healthy").length.toString()],
-                ["Degraded", nodes.filter((node) => node.is_enabled && node.current_status === "degraded").length.toString()],
-                ["Down", nodes.filter((node) => node.is_enabled && node.current_status === "down").length.toString()],
-                ["Disabled", nodes.filter((node) => !node.is_enabled).length.toString()],
+                ["Runner Mode", nodes.filter((node) => node.execution_mode === "runner").length.toString()],
+                ["Agent Mode", nodes.filter((node) => node.execution_mode === "agent").length.toString()],
+                ["With Context", nodes.filter((node) => node.context_text?.trim()).length.toString()],
+                ["With Credentials", nodes.filter((node) => node.credential_id).length.toString()],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-3xl bg-panel px-5 py-4 dark:bg-white/5">
                   <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">{label}</p>
@@ -212,15 +213,21 @@ export default function DashboardPage() {
           </div>
 
           <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
-            <h3 className="text-xl font-semibold">Remediation profiles</h3>
+            <h3 className="text-xl font-semibold">Execution modes</h3>
             <div className="mt-4 space-y-4">
-              {profiles.map((profile) => (
-                <div key={profile.id} className="rounded-3xl bg-panel p-4 dark:bg-white/5">
-                  <p className="font-semibold">{profile.name}</p>
-                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{profile.description}</p>
-                  <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{profile.allowed_action_keys.join(" | ")}</p>
-                </div>
-              ))}
+              <div className="rounded-3xl bg-panel p-4 dark:bg-white/5">
+                <p className="font-semibold">Runner</p>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Centralized execution through `raven-runner` using local, SSH, or API dispatch.</p>
+              </div>
+              <div className="rounded-3xl bg-panel p-4 dark:bg-white/5">
+                <p className="font-semibold">Agent</p>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Remote command execution through a node-local agent endpoint using approved command cards.</p>
+              </div>
+              {user.role === "admin" ? (
+                <Link href="/credentials" className="inline-flex rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white dark:bg-ember">
+                  Manage credentials
+                </Link>
+              ) : null}
             </div>
           </div>
         </div>
@@ -232,7 +239,7 @@ export default function DashboardPage() {
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold">{editing ? "Edit node" : "Add node"}</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-300">Node definitions drive monitoring cadence, AI context, and allowed remediation targeting.</p>
+                <p className="text-sm text-slate-600 dark:text-slate-300">Node definitions drive troubleshooting context, command policy, and execution routing.</p>
               </div>
               <button
                 className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200"
@@ -244,7 +251,7 @@ export default function DashboardPage() {
                 Close
               </button>
             </div>
-            <NodeForm profiles={profiles} initial={editing} onSubmit={saveNode} onCancel={() => { setShowForm(false); setEditing(null); }} />
+            <NodeForm credentials={credentials} initial={editing} onSubmit={saveNode} onCancel={() => { setShowForm(false); setEditing(null); }} />
           </div>
         </section>
       ) : null}

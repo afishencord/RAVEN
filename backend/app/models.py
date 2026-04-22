@@ -59,8 +59,12 @@ class Node(TimestampMixin, Base):
     check_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=5)
     retry_count: Mapped[int] = mapped_column(Integer, default=3)
-    remediation_profile: Mapped[str] = mapped_column(String(64), index=True)
+    remediation_profile: Mapped[str] = mapped_column(String(64), default="command-executor", index=True)
+    execution_mode: Mapped[str] = mapped_column(String(32), default="runner", index=True)
     execution_target: Mapped[str] = mapped_column(String(255))
+    context_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_command_policy: Mapped[str | None] = mapped_column(Text, nullable=True)
+    credential_id: Mapped[int | None] = mapped_column(ForeignKey("credentials.id"), nullable=True)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     current_status: Mapped[str] = mapped_column(String(32), default="healthy", index=True)
     last_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -166,9 +170,13 @@ class ExecutionTask(Base):
     node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
     profile_id: Mapped[int] = mapped_column(ForeignKey("remediation_profiles.id"), index=True)
     action_key: Mapped[str] = mapped_column(String(128))
+    proposal_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    proposal_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     target: Mapped[str] = mapped_column(String(255))
     parameters: Mapped[dict] = mapped_column(JSON, default=dict)
     execution_method: Mapped[str] = mapped_column(String(32), default="local")
+    execution_mode: Mapped[str] = mapped_column(String(32), default="runner")
+    approved_command: Mapped[str | None] = mapped_column(Text, nullable=True)
     command_preview: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -210,3 +218,15 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(128), index=True)
     details_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class Credential(TimestampMixin, Base):
+    __tablename__ = "credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    username: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    secret_value: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)

@@ -3,7 +3,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db, require_admin, require_operator_or_admin
-from app.models import AIRecommendation, ApprovalDecision, ExecutionTask, HealthCheckResult, Incident, Node, RemediationProfile, User
+from app.models import AIRecommendation, ApprovalDecision, Credential, ExecutionTask, HealthCheckResult, Incident, Node, User
 from app.schemas import NodeCreate, NodeDetailRead, NodeRead, NodeUpdate
 from app.services.incident_workflow import run_and_record_health_check, write_audit_log
 
@@ -26,7 +26,9 @@ def list_nodes(
 
 @router.post("", response_model=NodeRead, status_code=status.HTTP_201_CREATED)
 def create_node(payload: NodeCreate, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
-    node = Node(**payload.model_dump())
+    node_data = payload.model_dump()
+    node_data["remediation_profile"] = "command-executor"
+    node = Node(**node_data)
     db.add(node)
     db.commit()
     db.refresh(node)
@@ -48,6 +50,8 @@ def update_node(node_id: int, payload: NodeUpdate, db: Session = Depends(get_db)
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
+    if not node.remediation_profile:
+        node.remediation_profile = "command-executor"
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(node, key, value)
     db.commit()
@@ -81,11 +85,22 @@ def get_node_detail(node_id: int, db: Session = Depends(get_db), _: User = Depen
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
-    profile = db.query(RemediationProfile).filter(RemediationProfile.name == node.remediation_profile).first()
     incidents = db.query(Incident).filter(Incident.node_id == node.id).order_by(desc(Incident.started_at)).limit(20).all()
-    recommendations = db.query(AIRecommendation).filter(AIRecommendation.node_id == node.id).order_by(desc(AIRecommendation.created_at)).limit(20).all()
+    recommendations = (
+        db.query(AIRecommendation)
+        .filter(AIRecommendation.node_id == node.id)
+        .order_by(desc(AIRecommendation.created_at), desc(AIRecommendation.id))
+        .limit(20)
+        .all()
+    )
     health_checks = db.query(HealthCheckResult).filter(HealthCheckResult.node_id == node.id).order_by(desc(HealthCheckResult.checked_at)).limit(30).all()
-    executions = db.query(ExecutionTask).filter(ExecutionTask.node_id == node.id).order_by(desc(ExecutionTask.queued_at)).limit(20).all()
+    executions = (
+        db.query(ExecutionTask)
+        .filter(ExecutionTask.node_id == node.id)
+        .order_by(desc(ExecutionTask.queued_at), desc(ExecutionTask.id))
+        .limit(20)
+        .all()
+    )
     approvals = (
         db.query(ApprovalDecision)
         .join(Incident, Incident.id == ApprovalDecision.incident_id)
@@ -94,6 +109,7 @@ def get_node_detail(node_id: int, db: Session = Depends(get_db), _: User = Depen
         .limit(20)
         .all()
     )
+    credential = db.query(Credential).filter(Credential.id == node.credential_id).first() if node.credential_id else None
     return NodeDetailRead(
         node=node,
         health_checks=health_checks,
@@ -101,5 +117,16 @@ def get_node_detail(node_id: int, db: Session = Depends(get_db), _: User = Depen
         recommendations=recommendations,
         executions=executions,
         approvals=approvals,
-        remediation_profile=profile,
+        credential=credential and {
+            "id": credential.id,
+            "name": credential.name,
+            "kind": credential.kind,
+            "username": credential.username,
+            "description": credential.description,
+            "metadata_json": credential.metadata_json,
+            "has_secret": bool(credential.secret_value),
+            "masked_secret": "*" * 8 if credential.secret_value else "",
+            "created_at": credential.created_at,
+            "updated_at": credential.updated_at,
+        },
     )

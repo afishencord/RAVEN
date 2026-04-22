@@ -15,15 +15,15 @@ type Props = {
   children: ReactNode;
 };
 
-const navItems = [
-  { href: "/", label: "Dashboard" },
-  { href: "/messages", label: "Message Center" },
-];
-
 export function AppShell({ title, subtitle, user, children }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const showChromeCopy = pathname !== "/" && pathname !== "/messages";
+  const navItems = [
+    { href: "/", label: "Dashboard" },
+    { href: "/messages", label: "Message Center" },
+    ...(user.role === "admin" ? [{ href: "/credentials", label: "Credentials" }] : []),
+  ];
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(139,92,246,0.22),_transparent_22%),radial-gradient(circle_at_bottom_right,_rgba(139,92,246,0.1),_transparent_30%),linear-gradient(180deg,_#faf5ff_0%,_#efe7ff_100%)] text-ink dark:bg-[radial-gradient(circle_at_top_left,_rgba(139,92,246,0.08),_transparent_16%),radial-gradient(circle_at_bottom_right,_rgba(124,58,237,0.05),_transparent_22%),linear-gradient(180deg,_#09090f_0%,_#120d1d_100%)] dark:text-slate-100">

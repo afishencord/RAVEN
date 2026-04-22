@@ -6,6 +6,19 @@ export type User = {
   is_active: boolean;
 };
 
+export type CredentialRecord = {
+  id: number;
+  name: string;
+  kind: string;
+  username?: string | null;
+  description?: string | null;
+  metadata_json: Record<string, unknown>;
+  has_secret: boolean;
+  masked_secret: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type NodeRecord = {
   id: number;
   name: string;
@@ -21,8 +34,11 @@ export type NodeRecord = {
   check_interval_seconds: number;
   timeout_seconds: number;
   retry_count: number;
-  remediation_profile: string;
+  execution_mode: "runner" | "agent";
   execution_target: string;
+  context_text?: string | null;
+  approved_command_policy?: string | null;
+  credential_id?: number | null;
   is_enabled: boolean;
   current_status: string;
   last_check_at?: string | null;
@@ -58,13 +74,23 @@ export type Incident = {
   is_active: boolean;
 };
 
+export type CommandProposal = {
+  proposal_id: string;
+  title: string;
+  command: string;
+  rationale: string;
+  execution_mode: "runner" | "agent";
+  target_summary: string;
+  risk_level: string;
+};
+
 export type Recommendation = {
   id: number;
   status: string;
   suspected_issue_classification: string;
   summary: string;
   troubleshooting_steps: string[];
-  proposed_actions: Array<{ action_key: string; title: string; reason: string; priority?: string }>;
+  proposed_commands: CommandProposal[];
   rationale: string;
   model_name: string;
   created_at: string;
@@ -82,11 +108,13 @@ export type ExecutionTask = {
   id: number;
   incident_id: number;
   node_id: number;
-  profile_id: number;
-  action_key: string;
+  proposal_id?: string | null;
+  proposal_title?: string | null;
   target: string;
   parameters: Record<string, unknown>;
   execution_method: string;
+  execution_mode: string;
+  approved_command?: string | null;
   command_preview: string;
   status: string;
   queued_at: string;
@@ -100,27 +128,13 @@ export type ExecutionTask = {
   approved_by_id: number;
 };
 
-export type RemediationProfile = {
-  id: number;
-  name: string;
-  description: string;
-  allowed_action_keys: string[];
-  allowed_targets: string[];
-  approval_required: boolean;
-  cooldown_seconds: number;
-  retry_limit: number;
-  post_action_validation: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-};
-
 export type NodeDetail = {
   node: NodeRecord;
   health_checks: HealthCheck[];
   incidents: Incident[];
   recommendations: Recommendation[];
   executions: ExecutionTask[];
-  remediation_profile?: RemediationProfile | null;
+  credential?: CredentialRecord | null;
 };
 
 export type MessageIncident = {

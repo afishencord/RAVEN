@@ -79,7 +79,7 @@ def approve_remediation(
         queue_execution(
             db,
             incident=incident,
-            action_key=payload.action_key,
+            proposal_id=payload.proposal_id,
             approver=current_user,
             note=payload.note,
             recommendation_id=recommendation.id if recommendation else None,
@@ -107,7 +107,7 @@ def reject_remediation(
         reject_execution(
             db,
             incident=incident,
-            action_key=payload.action_key,
+            proposal_id=payload.proposal_id,
             actor=current_user,
             note=payload.note,
             recommendation_id=recommendation.id if recommendation else None,

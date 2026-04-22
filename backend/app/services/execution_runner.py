@@ -5,18 +5,18 @@ import json
 import logging
 import shlex
 import subprocess
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 import httpx
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import SessionLocal
-from app.models import ApprovalDecision, ExecutionTask, Incident, Node, RemediationProfile, User, utcnow
-from app.services.health_checks import build_health_url
+from app.database import Base, SessionLocal, engine, migrate_sqlite_schema
+from app.models import ApprovalDecision, Credential, ExecutionTask, Incident, Node, RemediationProfile, User, utcnow
 from app.services.incident_workflow import run_and_record_health_check, write_audit_log
-from app.services.remediation_catalog import get_action, render_command
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -33,43 +33,51 @@ def parse_target(raw_target: str) -> ParsedTarget:
     parts = raw_target.split(":", 2)
     if len(parts) == 1:
         return ParsedTarget(transport="local", location=None, subject=raw_target)
-    if parts[0] in {"local", "script"} and len(parts) == 2:
-        return ParsedTarget(transport=parts[0], location=None, subject=parts[1])
+    if parts[0] == "local" and len(parts) == 2:
+        return ParsedTarget(transport="local", location=None, subject=parts[1])
     if parts[0] in {"ssh", "api"} and len(parts) == 3:
         return ParsedTarget(transport=parts[0], location=parts[1], subject=parts[2])
     return ParsedTarget(transport="local", location=None, subject=raw_target)
 
 
-def _load_profile(db: Session, node: Node) -> RemediationProfile:
-    profile = db.query(RemediationProfile).filter(RemediationProfile.name == node.remediation_profile).first()
-    if not profile:
-        raise ValueError(f"Remediation profile {node.remediation_profile} not found")
+def _default_profile(db: Session) -> RemediationProfile:
+    profile = db.query(RemediationProfile).filter(RemediationProfile.name == "command-executor").first()
+    if profile:
+        return profile
+    profile = db.query(RemediationProfile).order_by(RemediationProfile.id.asc()).first()
+    if profile:
+        return profile
+    profile = RemediationProfile(
+        name="command-executor",
+        description="Compatibility profile for approved command execution.",
+        allowed_action_keys=["approved_command"],
+        allowed_targets=["*"],
+        approval_required=True,
+        cooldown_seconds=0,
+        retry_limit=1,
+        post_action_validation={"mode": "rerun_health_check"},
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
     return profile
 
 
-def _validate_queue_request(db: Session, node: Node, profile: RemediationProfile, action_key: str) -> None:
-    if action_key not in profile.allowed_action_keys:
-        raise ValueError("Action is not allowed by the remediation profile")
-    if node.execution_target not in profile.allowed_targets and "*" not in profile.allowed_targets:
-        raise ValueError("Execution target is not allowed by the remediation profile")
-
-    last_task = (
-        db.query(ExecutionTask)
-        .filter(ExecutionTask.node_id == node.id, ExecutionTask.action_key == action_key)
-        .order_by(desc(ExecutionTask.queued_at))
-        .first()
-    )
-    if last_task and last_task.finished_at:
-        cooldown_elapsed = (utcnow() - last_task.finished_at).total_seconds()
-        if cooldown_elapsed < profile.cooldown_seconds:
-            raise ValueError("Action is still in cooldown for this node")
+def _proposal_for_incident(incident: Incident, proposal_id: str) -> dict:
+    if not incident.recommendations:
+        raise ValueError("No recommendation available for this incident")
+    recommendation = max(incident.recommendations, key=lambda item: (item.created_at, item.id))
+    for proposal in recommendation.proposed_actions:
+        if proposal.get("proposal_id") == proposal_id:
+            return proposal
+    raise ValueError("Command proposal not found")
 
 
 def queue_execution(
     db: Session,
     *,
     incident: Incident,
-    action_key: str,
+    proposal_id: str,
     approver: User,
     note: str | None = None,
     recommendation_id: int | None = None,
@@ -77,22 +85,22 @@ def queue_execution(
     node = db.query(Node).filter(Node.id == incident.node_id).first()
     if not node:
         raise ValueError("Node not found")
-    profile = _load_profile(db, node)
-    _validate_queue_request(db, node, profile, action_key)
-    parsed = parse_target(node.execution_target)
-    preview = render_command(action_key, target=parsed.subject, url=build_health_url(node))
-    action = get_action(action_key)
-    execution_method = parsed.transport if parsed.transport in {"ssh", "api"} else action.execution_method.replace("_or_ssh", "")
 
+    proposal = _proposal_for_incident(incident, proposal_id)
+    profile = _default_profile(db)
     task = ExecutionTask(
         incident_id=incident.id,
         node_id=node.id,
         profile_id=profile.id,
-        action_key=action_key,
+        action_key="approved_command",
+        proposal_id=proposal["proposal_id"],
+        proposal_title=proposal["title"],
         target=node.execution_target,
-        parameters={"target_subject": parsed.subject},
-        execution_method=execution_method,
-        command_preview=preview,
+        parameters={"risk_level": proposal.get("risk_level", "medium")},
+        execution_method=node.execution_mode,
+        execution_mode=node.execution_mode,
+        approved_command=proposal["command"],
+        command_preview=proposal["command"],
         status="queued",
         requested_by_id=approver.id,
         approved_by_id=approver.id,
@@ -104,7 +112,7 @@ def queue_execution(
             incident_id=incident.id,
             recommendation_id=recommendation_id,
             execution_task_id=task.id,
-            action_key=action_key,
+            action_key=proposal["proposal_id"],
             decision="approved",
             note=note,
             decided_by_id=approver.id,
@@ -116,7 +124,12 @@ def queue_execution(
         entity_type="execution_task",
         entity_id=str(task.id),
         action="queued",
-        details={"incident_id": incident.id, "action_key": action_key, "execution_method": execution_method},
+        details={
+            "incident_id": incident.id,
+            "proposal_id": proposal["proposal_id"],
+            "execution_mode": node.execution_mode,
+            "command": proposal["command"],
+        },
     )
     db.commit()
     db.refresh(task)
@@ -127,7 +140,7 @@ def reject_execution(
     db: Session,
     *,
     incident: Incident,
-    action_key: str,
+    proposal_id: str,
     actor: User,
     note: str | None = None,
     recommendation_id: int | None = None,
@@ -136,7 +149,7 @@ def reject_execution(
         ApprovalDecision(
             incident_id=incident.id,
             recommendation_id=recommendation_id,
-            action_key=action_key,
+            action_key=proposal_id,
             decision="rejected",
             note=note,
             decided_by_id=actor.id,
@@ -148,7 +161,7 @@ def reject_execution(
         entity_type="incident",
         entity_id=str(incident.id),
         action="remediation_rejected",
-        details={"action_key": action_key, "note": note},
+        details={"proposal_id": proposal_id, "note": note},
     )
     db.commit()
 
@@ -156,6 +169,8 @@ def reject_execution(
 class RunnerDaemon:
     def __init__(self) -> None:
         self._running = False
+        Base.metadata.create_all(bind=engine)
+        migrate_sqlite_schema()
 
     async def run(self) -> None:
         self._running = True
@@ -186,21 +201,21 @@ class RunnerDaemon:
     def _execute_task(self, db: Session, task: ExecutionTask) -> None:
         node = db.query(Node).filter(Node.id == task.node_id).first()
         incident = db.query(Incident).filter(Incident.id == task.incident_id).first()
-        if not node or not incident:
+        if not node or not incident or not task.approved_command:
             task.status = "failed"
-            task.output = "Node or incident missing for execution task."
+            task.output = "Execution task is missing node, incident, or approved command."
             task.finished_at = utcnow()
             db.commit()
             return
 
-        parsed = parse_target(task.target)
+        credential = db.query(Credential).filter(Credential.id == node.credential_id).first() if node.credential_id else None
         task.status = "running"
         task.started_at = utcnow()
         db.commit()
 
-        exit_code, output = self._dispatch(task.command_preview, parsed, task.action_key)
+        exit_code, output = self._dispatch(node, task.approved_command, credential)
         task.exit_code = exit_code
-        task.output = output[:4000]
+        task.output = output[:8000]
         task.finished_at = utcnow()
         task.status = "success" if exit_code == 0 else "failed"
         db.commit()
@@ -209,11 +224,15 @@ class RunnerDaemon:
         task.post_validation_status = health_row.status
         db.commit()
 
-    def _dispatch(self, command: str, parsed: ParsedTarget, action_key: str) -> tuple[int, str]:
+    def _dispatch(self, node: Node, command: str, credential: Credential | None) -> tuple[int, str]:
+        if node.execution_mode == "agent":
+            return self._run_agent(node.execution_target, command, credential)
+
+        parsed = parse_target(node.execution_target)
         if parsed.transport == "ssh" and parsed.location:
-            return self._run_subprocess(["ssh", parsed.location, command])
+            return self._run_ssh(parsed.location, command, credential)
         if parsed.transport == "api" and parsed.location:
-            return self._run_api(parsed.location, parsed.subject, action_key)
+            return self._run_api(parsed.location, parsed.subject, command, credential)
         return self._run_subprocess(shlex.split(command))
 
     def _run_subprocess(self, command: list[str]) -> tuple[int, str]:
@@ -226,16 +245,87 @@ class RunnerDaemon:
         except FileNotFoundError as exc:
             return 127, str(exc)
 
-    def _run_api(self, endpoint: str, subject: str, action_key: str) -> tuple[int, str]:
+    def _run_ssh(self, location: str, command: str, credential: Credential | None) -> tuple[int, str]:
+        if not credential or credential.kind not in {"ssh_key", "ssh_password"}:
+            return 1, "SSH execution requires an ssh_key or ssh_password credential."
+
+        username = credential.username or "root"
+        if credential.kind == "ssh_password":
+            return self._run_subprocess(
+                [
+                    "sshpass",
+                    "-p",
+                    credential.secret_value,
+                    "ssh",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-o",
+                    "PreferredAuthentications=password",
+                    "-o",
+                    "PubkeyAuthentication=no",
+                    f"{username}@{location}",
+                    command,
+                ]
+            )
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as handle:
+            handle.write(credential.secret_value)
+            key_path = Path(handle.name)
+        key_path.chmod(0o600)
+        try:
+            return self._run_subprocess(
+                [
+                    "ssh",
+                    "-i",
+                    str(key_path),
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-o",
+                    "PreferredAuthentications=publickey",
+                    "-o",
+                    "PasswordAuthentication=no",
+                    f"{username}@{location}",
+                    command,
+                ]
+            )
+        finally:
+            key_path.unlink(missing_ok=True)
+
+    def _run_api(self, endpoint: str, subject: str, command: str, credential: Credential | None) -> tuple[int, str]:
+        headers = self._credential_headers(credential)
         try:
             response = httpx.post(
                 endpoint.rstrip("/") + "/execute",
-                json={"action_key": action_key, "target": subject},
+                json={"target": subject, "command": command},
+                headers=headers,
                 timeout=30.0,
             )
             return (0 if response.is_success else response.status_code, response.text)
         except Exception as exc:
             return 1, json.dumps({"error": str(exc)})
+
+    def _run_agent(self, endpoint: str, command: str, credential: Credential | None) -> tuple[int, str]:
+        headers = self._credential_headers(credential)
+        try:
+            response = httpx.post(
+                endpoint.rstrip("/") + "/execute",
+                json={"command": command},
+                headers=headers,
+                timeout=30.0,
+            )
+            if response.is_success:
+                payload = response.json()
+                return int(payload.get("exit_code", 0)), payload.get("output", "")
+            return response.status_code, response.text
+        except Exception as exc:
+            return 1, json.dumps({"error": str(exc)})
+
+    def _credential_headers(self, credential: Credential | None) -> dict[str, str]:
+        if not credential:
+            return {}
+        if credential.kind in {"bearer_token", "agent_token"}:
+            return {"Authorization": f"Bearer {credential.secret_value}"}
+        return {}
 
 
 async def main() -> None:

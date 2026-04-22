@@ -2,10 +2,10 @@
 
 import { FormEvent, useState } from "react";
 
-import { NodeRecord, RemediationProfile } from "@/lib/types";
+import { CredentialRecord, NodeRecord } from "@/lib/types";
 
 type Props = {
-  profiles: RemediationProfile[];
+  credentials: CredentialRecord[];
   initial?: NodeRecord | null;
   onSubmit: (payload: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
@@ -25,12 +25,15 @@ const defaultValues = {
   check_interval_seconds: "60",
   timeout_seconds: "5",
   retry_count: "3",
-  remediation_profile: "webapp-basic",
-  execution_target: "local:raven-web.service",
+  execution_mode: "runner",
+  execution_target: "local:raven-test",
+  context_text: "",
+  approved_command_policy: "",
+  credential_id: "",
   is_enabled: true,
 };
 
-export function NodeForm({ profiles, initial, onSubmit, onCancel }: Props) {
+export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
   const [form, setForm] = useState({
     ...defaultValues,
     ...(initial
@@ -45,6 +48,9 @@ export function NodeForm({ profiles, initial, onSubmit, onCancel }: Props) {
           health_check_path: initial.health_check_path ?? "",
           expected_response_contains: initial.expected_response_contains ?? "",
           url: initial.url ?? "",
+          context_text: initial.context_text ?? "",
+          approved_command_policy: initial.approved_command_policy ?? "",
+          credential_id: initial.credential_id?.toString() ?? "",
         }
       : {}),
   });
@@ -61,6 +67,7 @@ export function NodeForm({ profiles, initial, onSubmit, onCancel }: Props) {
         check_interval_seconds: Number(form.check_interval_seconds),
         timeout_seconds: Number(form.timeout_seconds),
         retry_count: Number(form.retry_count),
+        credential_id: form.credential_id ? Number(form.credential_id) : null,
       });
     } finally {
       setSaving(false);
@@ -108,18 +115,51 @@ export function NodeForm({ profiles, initial, onSubmit, onCancel }: Props) {
       </label>
 
       <label className="text-sm text-slate-700 dark:text-slate-200">
-        <span className="mb-2 block font-medium">Remediation Profile</span>
+        <span className="mb-2 block font-medium">Execution Mode</span>
         <select
-          value={form.remediation_profile}
-          onChange={(event) => setForm((current) => ({ ...current, remediation_profile: event.target.value }))}
+          value={form.execution_mode}
+          onChange={(event) => setForm((current) => ({ ...current, execution_mode: event.target.value }))}
           className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
         >
-          {profiles.map((profile) => (
-            <option key={profile.id} value={profile.name}>
-              {profile.name}
+          <option value="runner">runner</option>
+          <option value="agent">agent</option>
+        </select>
+      </label>
+
+      <label className="text-sm text-slate-700 dark:text-slate-200">
+        <span className="mb-2 block font-medium">Credential</span>
+        <select
+          value={form.credential_id}
+          onChange={(event) => setForm((current) => ({ ...current, credential_id: event.target.value }))}
+          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+        >
+          <option value="">No credential</option>
+          {credentials.map((credential) => (
+            <option key={credential.id} value={credential.id}>
+              {credential.name} ({credential.kind})
             </option>
           ))}
         </select>
+      </label>
+
+      <label className="md:col-span-2 text-sm text-slate-700 dark:text-slate-200">
+        <span className="mb-2 block font-medium">Node Context</span>
+        <textarea
+          value={form.context_text}
+          onChange={(event) => setForm((current) => ({ ...current, context_text: event.target.value }))}
+          className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+          placeholder="raven-test: a simple nginx container running on localhost:6767"
+        />
+      </label>
+
+      <label className="md:col-span-2 text-sm text-slate-700 dark:text-slate-200">
+        <span className="mb-2 block font-medium">Approved Command Policy</span>
+        <textarea
+          value={form.approved_command_policy}
+          onChange={(event) => setForm((current) => ({ ...current, approved_command_policy: event.target.value }))}
+          className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+          placeholder="Allow curl diagnostics and targeted service restarts only."
+        />
       </label>
 
       <label className="md:col-span-2 text-sm text-slate-700 dark:text-slate-200">

@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.auth import get_password_hash
-from app.models import Node, RemediationProfile, User
+from app.models import Credential, Node, RemediationProfile, User
 
 
 def seed_data(db: Session) -> None:
@@ -14,95 +14,79 @@ def seed_data(db: Session) -> None:
             ]
         )
 
-    if not db.query(RemediationProfile).first():
-        db.add_all(
-            [
-                RemediationProfile(
-                    name="webapp-basic",
-                    description="Basic web application remediation profile for systemd-based services.",
-                    allowed_action_keys=["restart_systemd_service", "clear_app_cache", "run_diagnostic_script", "curl_validation_check"],
-                    allowed_targets=["local:raven-web.service", "local:raven-cache"],
-                    approval_required=True,
-                    cooldown_seconds=300,
-                    retry_limit=1,
-                    post_action_validation={"mode": "rerun_health_check"},
-                ),
-                RemediationProfile(
-                    name="api-basic",
-                    description="API service profile for containerized services.",
-                    allowed_action_keys=["restart_container", "run_diagnostic_script", "curl_validation_check"],
-                    allowed_targets=["local:raven-api", "local:raven-worker"],
-                    approval_required=True,
-                    cooldown_seconds=300,
-                    retry_limit=1,
-                    post_action_validation={"mode": "rerun_health_check"},
-                ),
-                RemediationProfile(
-                    name="host-basic",
-                    description="Host reachability profile for node and network diagnostics.",
-                    allowed_action_keys=["run_diagnostic_script", "restart_process"],
-                    allowed_targets=["local:nginx", "local:system-network"],
-                    approval_required=True,
-                    cooldown_seconds=600,
-                    retry_limit=1,
-                    post_action_validation={"mode": "rerun_health_check"},
-                ),
-            ]
+    if not db.query(RemediationProfile).filter(RemediationProfile.name == "command-executor").first():
+        db.add(
+            RemediationProfile(
+                name="command-executor",
+                description="Compatibility profile used for approved command execution.",
+                allowed_action_keys=["approved_command"],
+                allowed_targets=["*"],
+                approval_required=True,
+                cooldown_seconds=0,
+                retry_limit=1,
+                post_action_validation={"mode": "rerun_health_check"},
+            )
         )
 
-    if not db.query(Node).first():
-        db.add_all(
-            [
-                Node(
-                    name="Marketing Web",
-                    description="Demo web node checking the RAVEN service health endpoint.",
-                    environment="prod",
-                    host="localhost",
-                    port=8000,
-                    url="http://localhost:8000",
-                    health_check_type="http",
-                    health_check_path="/health",
-                    expected_status_code=200,
-                    expected_response_contains="ok",
-                    check_interval_seconds=60,
-                    timeout_seconds=5,
-                    retry_count=3,
-                    remediation_profile="webapp-basic",
-                    execution_target="local:raven-web.service",
-                    is_enabled=True,
-                ),
-                Node(
-                    name="Orders API",
-                    description="Demo API node checking the RAVEN API health endpoint.",
-                    environment="staging",
-                    host="localhost",
-                    port=8000,
-                    url="http://localhost:8000",
-                    health_check_type="api",
-                    health_check_path="/api/health",
-                    expected_status_code=200,
-                    expected_response_contains="healthy",
-                    check_interval_seconds=45,
-                    timeout_seconds=5,
-                    retry_count=2,
-                    remediation_profile="api-basic",
-                    execution_target="local:raven-api",
-                    is_enabled=True,
-                ),
-                Node(
-                    name="Edge Host",
-                    description="Network edge host reachability check.",
-                    environment="prod",
-                    host="127.0.0.1",
-                    health_check_type="ping",
-                    check_interval_seconds=120,
-                    timeout_seconds=3,
-                    retry_count=2,
-                    remediation_profile="host-basic",
-                    execution_target="local:system-network",
-                    is_enabled=False,
-                ),
-            ]
+    credential = db.query(Credential).filter(Credential.name == "local-agent-token").first()
+    if not credential:
+        credential = Credential(
+            name="local-agent-token",
+            kind="agent_token",
+            description="Example credential for a node-local agent endpoint.",
+            secret_value="replace-me",
+            metadata_json={},
+        )
+        db.add(credential)
+        db.flush()
+
+    defaults = {
+        "Marketing Web": {
+            "execution_mode": "runner",
+            "execution_target": "local:raven-backend",
+            "context_text": "raven-backend: FastAPI API container serving health checks on localhost:8000.",
+            "approved_command_policy": "Prefer single-container diagnostics and restarts. Avoid destructive filesystem commands.",
+        },
+        "Orders API": {
+            "execution_mode": "runner",
+            "execution_target": "local:raven-backend",
+            "context_text": "orders-api: API health endpoint served by the RAVEN backend for staging validation.",
+            "approved_command_policy": "Diagnostics and targeted service restarts are allowed. Keep commands single-purpose.",
+        },
+        "Edge Host": {
+            "execution_mode": "runner",
+            "context_text": "edge-host: reachability probe against 127.0.0.1 for network diagnostics.",
+            "approved_command_policy": "Allow only non-destructive network diagnostics.",
+        },
+    }
+    for node in db.query(Node).all():
+        node.remediation_profile = "command-executor"
+        for key, value in defaults.get(node.name, {}).items():
+            setattr(node, key, value)
+
+    if not db.query(Node).filter(Node.name == "Raven Test").first():
+        db.add(
+            Node(
+                name="Raven Test",
+                description="Simple nginx container used for remediation testing.",
+                environment="lab",
+                host="localhost",
+                port=6767,
+                url="http://localhost:6767",
+                health_check_type="http",
+                health_check_path="/",
+                expected_status_code=200,
+                expected_response_contains="nginx is running on port 6767",
+                check_interval_seconds=30,
+                timeout_seconds=5,
+                retry_count=2,
+                remediation_profile="command-executor",
+                execution_mode="runner",
+                execution_target="local:raven-test",
+                context_text="raven-test: a simple nginx container running on localhost:6767 for testing agent response.",
+                approved_command_policy="Allow curl diagnostics, docker logs, and docker restart against the raven-test container only.",
+                is_enabled=True,
+            )
         )
 
     db.commit()

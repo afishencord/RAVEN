@@ -21,19 +21,6 @@ export default function MessagesPage() {
     setMessages(payload);
   }
 
-  function patchMessage(incidentId: number, updater: (message: MessageIncident) => MessageIncident) {
-    setMessages((current) =>
-      current.map((message) => (message.incident.id === incidentId ? updater(message) : message)),
-    );
-  }
-
-  async function refreshMessagesWithFollowUp() {
-    await loadMessages();
-    window.setTimeout(() => {
-      loadMessages().catch((err) => setError(err instanceof Error ? err.message : "Failed to refresh messages"));
-    }, 750);
-  }
-
   useEffect(() => {
     startTransition(() => {
       requireSession().then((session) => {
@@ -47,8 +34,21 @@ export default function MessagesPage() {
     });
   }, [router]);
 
-  async function runAction(incidentId: number, path: string, body?: Record<string, unknown>) {
-    const actionKey = `${incidentId}:${path}`;
+  function patchMessage(incidentId: number, updater: (message: MessageIncident) => MessageIncident) {
+    setMessages((current) =>
+      current.map((message) => (message.incident.id === incidentId ? updater(message) : message)),
+    );
+  }
+
+  async function refreshMessagesWithFollowUp() {
+    await loadMessages();
+    window.setTimeout(() => {
+      loadMessages().catch((err) => setError(err instanceof Error ? err.message : "Failed to refresh messages"));
+    }, 750);
+  }
+
+  async function runAction(incidentId: number, path: string, proposalId: string) {
+    const actionKey = `${incidentId}:${path}:${proposalId}`;
     setActiveAction(actionKey);
     setError("");
     try {
@@ -62,17 +62,9 @@ export default function MessagesPage() {
           },
         }));
       }
-      if (path === "/recommendation/refresh") {
-        patchMessage(incidentId, (message) => ({
-          ...message,
-          latest_recommendation: message.latest_recommendation
-            ? { ...message.latest_recommendation, summary: "Refreshing recommendation..." }
-            : message.latest_recommendation,
-        }));
-      }
       await apiFetch(`/incidents/${incidentId}${path}`, {
         method: "POST",
-        body: JSON.stringify(body ?? {}),
+        body: JSON.stringify({ proposal_id: proposalId }),
       });
       await refreshMessagesWithFollowUp();
     } catch (err) {
@@ -121,8 +113,18 @@ export default function MessagesPage() {
     if (!note) {
       return;
     }
-    await runAction(incidentId, "/notes", { note });
-    setNoteDrafts((current) => ({ ...current, [incidentId]: "" }));
+    const actionKey = `${incidentId}:/notes`;
+    setActiveAction(actionKey);
+    try {
+      await apiFetch(`/incidents/${incidentId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ note }),
+      });
+      setNoteDrafts((current) => ({ ...current, [incidentId]: "" }));
+      await refreshMessagesWithFollowUp();
+    } finally {
+      setActiveAction(null);
+    }
   }
 
   if (!user) {
@@ -180,26 +182,34 @@ export default function MessagesPage() {
               </section>
 
               <section className="rounded-3xl bg-panel p-5 dark:bg-white/5">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Recommended remediation steps</p>
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Proposed command cards</p>
                 <div className="mt-4 space-y-3">
-                  {(message.latest_recommendation?.proposed_actions ?? []).map((action) => (
-                    <div key={action.action_key} className="rounded-3xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-950/40">
+                  {(message.latest_recommendation?.proposed_commands ?? []).map((command) => (
+                    <div key={command.proposal_id} className="rounded-3xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-950/40">
                       <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-semibold">{action.title}</p>
-                          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{action.reason}</p>
-                          <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{action.action_key}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold">{command.title}</p>
+                          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{command.rationale}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <StatusBadge status={command.execution_mode} />
+                            <StatusBadge status={command.risk_level} />
+                          </div>
+                          <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{command.target_summary}</p>
+                          <pre className="mt-3 rounded-2xl bg-ink p-3 text-xs text-white">{command.command}</pre>
                         </div>
                         {user.role === "operator" || user.role === "admin" ? (
                           <div className="flex shrink-0 gap-2">
                             <button
                               className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white dark:bg-ember"
-                              disabled={activeAction === `${message.incident.id}:/approve`}
-                              onClick={() => runAction(message.incident.id, "/approve", { action_key: action.action_key })}
+                              disabled={activeAction === `${message.incident.id}:/approve:${command.proposal_id}`}
+                              onClick={() => runAction(message.incident.id, "/approve", command.proposal_id)}
                             >
-                              {activeAction === `${message.incident.id}:/approve` ? "Queuing..." : "Approve"}
+                              {activeAction === `${message.incident.id}:/approve:${command.proposal_id}` ? "Queuing..." : "Approve"}
                             </button>
-                            <button className="rounded-full bg-rose-100 px-4 py-2 text-xs font-semibold text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 dark:border dark:border-rose-900" onClick={() => runAction(message.incident.id, "/reject", { action_key: action.action_key })}>
+                            <button
+                              className="rounded-full bg-rose-100 px-4 py-2 text-xs font-semibold text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 dark:border dark:border-rose-900"
+                              onClick={() => runAction(message.incident.id, "/reject", command.proposal_id)}
+                            >
                               Reject
                             </button>
                           </div>
@@ -213,17 +223,17 @@ export default function MessagesPage() {
                     <>
                       <button
                         className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10"
-                        disabled={activeAction === `${message.incident.id}:/acknowledge`}
-                        onClick={() => runAction(message.incident.id, "/acknowledge")}
+                        disabled={activeAction === `${message.incident.id}:/acknowledge:manual`}
+                        onClick={() => runAction(message.incident.id, "/acknowledge", "manual")}
                       >
-                        {activeAction === `${message.incident.id}:/acknowledge` ? "Updating..." : "Acknowledge"}
+                        {activeAction === `${message.incident.id}:/acknowledge:manual` ? "Updating..." : "Acknowledge"}
                       </button>
                       <button
                         className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10"
-                        disabled={activeAction === `${message.incident.id}:/recommendation/refresh`}
-                        onClick={() => runAction(message.incident.id, "/recommendation/refresh")}
+                        disabled={activeAction === `${message.incident.id}:/recommendation/refresh:manual`}
+                        onClick={() => runAction(message.incident.id, "/recommendation/refresh", "manual")}
                       >
-                        {activeAction === `${message.incident.id}:/recommendation/refresh` ? "Refreshing..." : "Refresh recommendation"}
+                        {activeAction === `${message.incident.id}:/recommendation/refresh:manual` ? "Refreshing..." : "Refresh recommendation"}
                       </button>
                     </>
                   ) : null}
@@ -267,9 +277,11 @@ export default function MessagesPage() {
                           <StatusBadge status={execution.status} />
                           <span className="text-xs text-slate-500 dark:text-slate-400">{new Date(execution.queued_at).toLocaleString()}</span>
                         </div>
-                        <p className="mt-3 font-mono text-xs text-slate-700 dark:text-slate-200">{execution.command_preview}</p>
+                        <p className="mt-3 text-sm font-semibold">{execution.proposal_title ?? execution.proposal_id ?? "Approved command"}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{execution.execution_mode} | {execution.target}</p>
+                        <pre className="mt-3 rounded-2xl bg-ink p-3 text-xs text-white">{execution.approved_command ?? execution.command_preview}</pre>
                         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Exit code {execution.exit_code ?? "pending"} | Post-check {execution.post_validation_status ?? "pending"}</p>
-                        {execution.output ? <pre className="mt-3 rounded-2xl bg-ink p-3 text-xs text-white">{execution.output}</pre> : null}
+                        {execution.output ? <pre className="mt-3 rounded-2xl bg-slate-950 p-3 text-xs text-white">{execution.output}</pre> : null}
                       </div>
                     ))
                   ) : (

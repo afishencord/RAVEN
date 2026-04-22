@@ -26,6 +26,37 @@ class TokenResponse(BaseModel):
     user: UserRead
 
 
+class CredentialBase(BaseModel):
+    name: str
+    kind: str
+    username: str | None = None
+    description: str | None = None
+    metadata_json: dict = Field(default_factory=dict)
+
+
+class CredentialCreate(CredentialBase):
+    secret_value: str = Field(min_length=1)
+
+
+class CredentialUpdate(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    username: str | None = None
+    description: str | None = None
+    metadata_json: dict | None = None
+    secret_value: str | None = None
+
+
+class CredentialRead(CredentialBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    has_secret: bool
+    masked_secret: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class NodeBase(BaseModel):
     name: str
     description: str | None = None
@@ -40,8 +71,11 @@ class NodeBase(BaseModel):
     check_interval_seconds: int = 60
     timeout_seconds: int = 5
     retry_count: int = 3
-    remediation_profile: str
+    execution_mode: str = "runner"
     execution_target: str
+    context_text: str | None = None
+    approved_command_policy: str | None = None
+    credential_id: int | None = None
     is_enabled: bool = True
 
 
@@ -63,8 +97,11 @@ class NodeUpdate(BaseModel):
     check_interval_seconds: int | None = None
     timeout_seconds: int | None = None
     retry_count: int | None = None
-    remediation_profile: str | None = None
+    execution_mode: str | None = None
     execution_target: str | None = None
+    context_text: str | None = None
+    approved_command_policy: str | None = None
+    credential_id: int | None = None
     is_enabled: bool | None = None
 
 
@@ -93,11 +130,14 @@ class HealthCheckRead(BaseModel):
     checked_at: datetime
 
 
-class RecommendationAction(BaseModel):
-    action_key: str
+class CommandProposalRead(BaseModel):
+    proposal_id: str
     title: str
-    reason: str
-    priority: str = "medium"
+    command: str
+    rationale: str
+    execution_mode: str
+    target_summary: str
+    risk_level: str
 
 
 class AIRecommendationRead(BaseModel):
@@ -108,7 +148,7 @@ class AIRecommendationRead(BaseModel):
     suspected_issue_classification: str
     summary: str
     troubleshooting_steps: list[str]
-    proposed_actions: list[dict]
+    proposed_commands: list[CommandProposalRead] = Field(validation_alias="proposed_actions")
     rationale: str
     model_name: str
     created_at: datetime
@@ -167,11 +207,13 @@ class ExecutionTaskRead(BaseModel):
     id: int
     incident_id: int
     node_id: int
-    profile_id: int
-    action_key: str
+    proposal_id: str | None
+    proposal_title: str | None
     target: str
     parameters: dict
     execution_method: str
+    execution_mode: str
+    approved_command: str | None
     command_preview: str
     status: str
     queued_at: datetime
@@ -218,11 +260,11 @@ class NodeDetailRead(BaseModel):
     recommendations: list[AIRecommendationRead]
     executions: list[ExecutionTaskRead]
     approvals: list[ApprovalDecisionRead]
-    remediation_profile: RemediationProfileRead | None
+    credential: CredentialRead | None = None
 
 
 class IncidentActionRequest(BaseModel):
-    action_key: str
+    proposal_id: str
     note: str | None = None
 
 

@@ -39,7 +39,7 @@ export default function NodeDetailPage() {
     <AppShell
       user={user}
       title={detail ? detail.node.name : "Node detail"}
-      subtitle="Inspect the health history, incidents, recommendations, execution timeline, and assigned remediation profile for a single node."
+      subtitle="Inspect health history, incident context, command recommendations, and execution timeline for a single node."
     >
       <Link href="/" className="inline-flex rounded-full bg-panel px-4 py-2 text-sm font-medium text-slate-700 dark:bg-white/5 dark:text-slate-200">
         Back to dashboard
@@ -60,16 +60,16 @@ export default function NodeDetailPage() {
               <p className="text-sm text-slate-600 dark:text-slate-300">{detail.node.url ?? "URL derived from host/port"}</p>
             </div>
             <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Check config</p>
-              <p className="mt-3 text-lg font-semibold">{detail.node.health_check_type}</p>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Interval {detail.node.check_interval_seconds}s | Timeout {detail.node.timeout_seconds}s | Retry {detail.node.retry_count}</p>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Expected {detail.node.expected_status_code}{detail.node.expected_response_contains ? ` + "${detail.node.expected_response_contains}"` : ""}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Execution</p>
+              <p className="mt-3 text-lg font-semibold">{detail.node.execution_mode}</p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{detail.node.execution_target}</p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{detail.credential ? `${detail.credential.name} (${detail.credential.kind})` : "No credential attached"}</p>
             </div>
             <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Remediation profile</p>
-              <p className="mt-3 text-lg font-semibold">{detail.remediation_profile?.name ?? detail.node.remediation_profile}</p>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{detail.remediation_profile?.description ?? "Profile metadata unavailable."}</p>
-              <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{detail.node.execution_target}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Node context</p>
+              <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{detail.node.context_text ?? "No troubleshooting context configured."}</p>
+              <p className="mt-3 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Approved command policy</p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{detail.node.approved_command_policy ?? "No command policy configured."}</p>
             </div>
           </section>
 
@@ -122,6 +122,15 @@ export default function NodeDetailPage() {
                         <li key={step}>- {step}</li>
                       ))}
                     </ul>
+                    <div className="mt-4 space-y-3">
+                      {recommendation.proposed_commands.map((command) => (
+                        <div key={command.proposal_id} className="rounded-2xl bg-white p-3 dark:bg-slate-950/40">
+                          <p className="font-semibold">{command.title}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{command.target_summary}</p>
+                          <pre className="mt-3 rounded-2xl bg-ink p-3 text-xs text-white">{command.command}</pre>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -136,9 +145,11 @@ export default function NodeDetailPage() {
                       <StatusBadge status={task.status} />
                       <span className="text-xs text-slate-500 dark:text-slate-400">{new Date(task.queued_at).toLocaleString()}</span>
                     </div>
-                    <p className="mt-3 font-mono text-xs text-slate-700 dark:text-slate-200">{task.command_preview}</p>
+                    <p className="mt-3 text-sm font-semibold">{task.proposal_title ?? task.proposal_id ?? "Approved command"}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{task.execution_mode} | {task.target}</p>
+                    <pre className="mt-3 rounded-2xl bg-ink/95 p-3 text-xs text-white">{task.approved_command ?? task.command_preview}</pre>
                     <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Exit code {task.exit_code ?? "pending"} | Post-check {task.post_validation_status ?? "pending"}</p>
-                    {task.output ? <pre className="mt-3 rounded-2xl bg-ink/95 p-3 text-xs text-white">{task.output}</pre> : null}
+                    {task.output ? <pre className="mt-3 rounded-2xl bg-slate-950 p-3 text-xs text-white">{task.output}</pre> : null}
                   </div>
                 ))}
               </div>

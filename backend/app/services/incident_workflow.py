@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.models import AIRecommendation, AlertMessage, AuditLog, HealthCheckResult, Incident, Node, User, utcnow
+from app.models import AIRecommendation, AlertMessage, AuditLog, ExecutionTask, HealthCheckResult, Incident, Node, User, utcnow
 from app.services.ai_service import AIRecommendationService
 from app.services.health_checks import run_health_check
 
@@ -70,7 +70,19 @@ def _create_recommendation(db: Session, node: Node, incident: Incident) -> AIRec
             .all()
         )
     ]
-    payload = ai_service.generate(node=node, incident=incident, recent_history=recent_history, prior_incidents=prior_incidents)
+    recent_executions = (
+        db.query(ExecutionTask)
+        .filter(ExecutionTask.node_id == node.id)
+        .order_by(desc(ExecutionTask.queued_at))
+        .limit(5)
+        .all()
+    )
+    payload = ai_service.generate(
+        node=node,
+        incident=incident,
+        recent_history=recent_history + ai_service.latest_execution_context(node, recent_executions),
+        prior_incidents=prior_incidents,
+    )
     recommendation = ai_service.persist(incident=incident, node=node, payload=payload)
     db.add(recommendation)
     return recommendation
