@@ -45,3 +45,14 @@ def migrate_sqlite_schema() -> None:
             for column, statement in additions.items():
                 if column not in existing:
                     connection.execute(text(statement))
+
+    if "incidents" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("incidents")}
+        additions = {
+            "archived_at": "ALTER TABLE incidents ADD COLUMN archived_at DATETIME",
+            "archived_by_id": "ALTER TABLE incidents ADD COLUMN archived_by_id INTEGER",
+        }
+        with engine.begin() as connection:
+            for column, statement in additions.items():
+                if column not in existing:
+                    connection.execute(text(statement))

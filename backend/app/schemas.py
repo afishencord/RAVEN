@@ -168,6 +168,7 @@ class IncidentRead(BaseModel):
     last_failure_at: datetime
     resolved_at: datetime | None
     acknowledged_at: datetime | None
+    archived_at: datetime | None
     is_active: bool
 
 

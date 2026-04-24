@@ -36,6 +36,26 @@ def acknowledge_incident(incident_id: int, db: Session = Depends(get_db), curren
     return StatusResponse(status="acknowledged")
 
 
+@router.post("/{incident_id}/archive", response_model=StatusResponse)
+def archive_incident(incident_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_operator_or_admin)):
+    incident = _get_incident_or_404(db, incident_id)
+    incident.archived_at = utcnow()
+    incident.archived_by_id = current_user.id
+    write_audit_log(db, actor=current_user, entity_type="incident", entity_id=str(incident.id), action="archived", details={})
+    db.commit()
+    return StatusResponse(status="archived")
+
+
+@router.post("/{incident_id}/unarchive", response_model=StatusResponse)
+def unarchive_incident(incident_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_operator_or_admin)):
+    incident = _get_incident_or_404(db, incident_id)
+    incident.archived_at = None
+    incident.archived_by_id = None
+    write_audit_log(db, actor=current_user, entity_type="incident", entity_id=str(incident.id), action="unarchived", details={})
+    db.commit()
+    return StatusResponse(status="unarchived")
+
+
 @router.post("/{incident_id}/notes", response_model=IncidentNoteRead)
 def add_note(incident_id: int, payload: IncidentNoteCreate, db: Session = Depends(get_db), current_user: User = Depends(require_operator_or_admin)):
     incident = _get_incident_or_404(db, incident_id)

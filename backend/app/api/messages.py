@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -10,8 +10,14 @@ router = APIRouter(prefix="/messages", tags=["messages"])
 
 
 @router.get("", response_model=list[MessageIncidentRead])
-def list_messages(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    incidents = db.query(Incident).order_by(desc(Incident.started_at), desc(Incident.id)).limit(50).all()
+def list_messages(
+    archived: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    query = db.query(Incident)
+    query = query.filter(Incident.archived_at.isnot(None) if archived else Incident.archived_at.is_(None))
+    incidents = query.order_by(desc(Incident.started_at), desc(Incident.id)).limit(50).all()
     response: list[MessageIncidentRead] = []
     for incident in incidents:
         latest_recommendation = (
