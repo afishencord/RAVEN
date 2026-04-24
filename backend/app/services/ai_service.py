@@ -36,8 +36,8 @@ def _fallback_commands(node: Node, incident: Incident) -> list[dict]:
     commands_by_type = {
         "http": [
             ("inspect-http", f"curl -i {health_url}", "Inspect the failing HTTP endpoint directly."),
-            ("inspect-logs", "docker logs --tail 100 raven-test", "Inspect recent container logs for the affected service."),
-            ("restart-container", "docker restart raven-test", "Restart the nginx test container to recover from a bad state."),
+            ("inspect-logs", "docker logs --tail 100 <container_name>", "Inspect recent container logs for the affected service."),
+            ("restart-container", "docker restart <container_name>", "Restart the affected container after confirming it is safe to do so."),
         ],
         "https": [
             ("inspect-https", f"curl -k -i {health_url}", "Inspect the HTTPS endpoint response and TLS behavior."),

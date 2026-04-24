@@ -77,11 +77,11 @@ export default function LoginPage() {
           <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
             <label className="block text-sm">
               <span className="mb-2 block text-white/70">Username</span>
-              <input value={username} onChange={(event) => setUsername(event.target.value)} className="w-full rounded-2xl border border-slate-700 bg-[#0B1020] px-4 py-3 outline-none focus:border-ember" />
+              <input value={username} onChange={(event) => setUsername(event.target.value)} className="w-full rounded-2xl border border-slate-700 bg-[#0B1020] px-4 py-3 text-white caret-white outline-none focus:border-ember" />
             </label>
             <label className="block text-sm">
               <span className="mb-2 block text-white/70">Password</span>
-              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-2xl border border-slate-700 bg-[#0B1020] px-4 py-3 outline-none focus:border-ember" />
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-2xl border border-slate-700 bg-[#0B1020] px-4 py-3 text-white caret-white outline-none focus:border-ember" />
             </label>
             {error ? <p className="rounded-2xl bg-rose-500/15 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
             <button disabled={loading} className="w-full rounded-full bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:text-ember">

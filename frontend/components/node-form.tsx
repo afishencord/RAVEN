@@ -26,7 +26,7 @@ const defaultValues = {
   timeout_seconds: "5",
   retry_count: "3",
   execution_mode: "runner",
-  execution_target: "local:raven-test",
+  execution_target: "local:raven-backend",
   context_text: "",
   approved_command_policy: "",
   credential_id: "",
@@ -148,7 +148,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
           value={form.context_text}
           onChange={(event) => setForm((current) => ({ ...current, context_text: event.target.value }))}
           className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
-          placeholder="raven-test: a simple nginx container running on localhost:6767"
+          placeholder="Describe the service, owner, dependencies, and known failure modes."
         />
       </label>
 

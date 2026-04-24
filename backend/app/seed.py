@@ -64,29 +64,8 @@ def seed_data(db: Session) -> None:
         for key, value in defaults.get(node.name, {}).items():
             setattr(node, key, value)
 
-    if not db.query(Node).filter(Node.name == "Raven Test").first():
-        db.add(
-            Node(
-                name="Raven Test",
-                description="Simple nginx container used for remediation testing.",
-                environment="lab",
-                host="localhost",
-                port=6767,
-                url="http://localhost:6767",
-                health_check_type="http",
-                health_check_path="/",
-                expected_status_code=200,
-                expected_response_contains="nginx is running on port 6767",
-                check_interval_seconds=30,
-                timeout_seconds=5,
-                retry_count=2,
-                remediation_profile="command-executor",
-                execution_mode="runner",
-                execution_target="local:raven-test",
-                context_text="raven-test: a simple nginx container running on localhost:6767 for testing agent response.",
-                approved_command_policy="Allow curl diagnostics, docker logs, and docker restart against the raven-test container only.",
-                is_enabled=True,
-            )
-        )
+    raven_test = db.query(Node).filter(Node.name == "Raven Test").first()
+    if raven_test:
+        db.delete(raven_test)
 
     db.commit()
