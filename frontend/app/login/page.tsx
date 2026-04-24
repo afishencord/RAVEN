@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 import { API_BASE, requireSession, setToken } from "@/lib/api";
@@ -45,32 +46,31 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(139,92,246,0.2),_transparent_22%),radial-gradient(circle_at_bottom_left,_rgba(139,92,246,0.18),_transparent_28%),linear-gradient(180deg,_#faf5ff_0%,_#efe7ff_100%)] px-4 py-10 dark:bg-[radial-gradient(circle_at_top_right,_rgba(139,92,246,0.12),_transparent_18%),radial-gradient(circle_at_bottom_left,_rgba(124,58,237,0.08),_transparent_24%),linear-gradient(180deg,_#09090f_0%,_#120d1d_100%)]">
+    <div className="min-h-screen bg-[#F7F8FB] px-4 py-10 text-[#111827] dark:bg-[#070B16] dark:text-slate-100">
       <div className="mx-auto flex max-w-6xl justify-end pb-4">
         <ThemeToggle />
       </div>
       <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-[2rem] border border-white/60 bg-white/75 p-8 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55 dark:text-slate-100">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-ember">RAVEN</p>
-          <h1 className="mt-6 max-w-xl text-5xl font-semibold leading-[1.05]">Human-approved remediation for web application incidents.</h1>
-          <p className="mt-5 max-w-2xl text-lg text-slate-600 dark:text-slate-300">
-            Detect failures, generate AI-assisted troubleshooting, and queue only approved remediations through a controlled runner.
-          </p>
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {[
-              ["Observe", "Continuous checks track health by ping, HTTP, HTTPS, and API probes."],
-              ["Decide", "The agent explains failure patterns and recommends only catalog-approved actions."],
-              ["Execute", "Operators approve actions, and the secure runner logs every execution and validation step."],
-            ].map(([title, text]) => (
-              <div key={title} className="rounded-3xl bg-panel p-5 dark:bg-white/5">
-                <h2 className="text-lg font-semibold">{title}</h2>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{text}</p>
-              </div>
-            ))}
-          </div>
+        <section className="flex min-h-[520px] items-center justify-center rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-white/10 dark:bg-[#050814]">
+          <Image
+            src="/brand/raven-landing-light.png"
+            alt="RAVEN platform overview"
+            width={1254}
+            height={521}
+            className="h-auto w-full rounded-3xl object-contain dark:hidden"
+            priority
+          />
+          <Image
+            src="/brand/raven-landing-dark.png"
+            alt="RAVEN platform overview"
+            width={1254}
+            height={574}
+            className="hidden h-auto w-full rounded-3xl object-contain dark:block"
+            priority
+          />
         </section>
 
-        <section className="rounded-[2rem] border border-white/70 bg-ink p-8 text-white shadow-panel dark:border-white/10 dark:bg-slate-950/75">
+        <section className="rounded-[2rem] border border-white/70 bg-[#050814] p-8 text-white shadow-panel dark:border-white/10 dark:bg-[#050814]">
           <p className="text-xs uppercase tracking-[0.35em] text-white/60">Access</p>
           <h2 className="mt-4 text-3xl font-semibold">Sign in to the control plane</h2>
           <p className="mt-3 text-sm text-white/70">Seeded accounts are available for the MVP. Change them before any shared deployment.</p>

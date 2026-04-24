@@ -19,6 +19,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode } from "react";
@@ -72,7 +73,14 @@ export function AppShell({ title, subtitle, user, children }: Props) {
     <div className="flex h-screen w-screen overflow-hidden bg-[#F7F8FB] text-[#111827] dark:bg-[#070B16] dark:text-slate-100">
       <aside className="hidden h-screen w-[240px] shrink-0 flex-col border-r border-white/10 bg-[#050814] px-3 py-5 text-white shadow-[12px_0_30px_rgba(2,6,23,0.18)] lg:flex">
         <Link href="/" className="flex items-center gap-3 px-3">
-          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#7C3AED] text-lg font-black shadow-[0_0_28px_rgba(124,58,237,0.45)]">R</span>
+          <Image
+            src="/brand/raven-square-logo.png"
+            alt="RAVEN logo"
+            width={40}
+            height={40}
+            className="h-10 w-10 rounded-2xl object-cover"
+            priority
+          />
           <span className="text-lg font-bold tracking-[0.22em]">RAVEN</span>
         </Link>
 
