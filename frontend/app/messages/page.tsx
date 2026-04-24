@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch, requireSession } from "@/lib/api";
+import { useLiveRefresh } from "@/lib/live-updates";
 import { MessageIncident, User } from "@/lib/types";
 
 type MessageView = "active" | "archived";
@@ -19,11 +20,19 @@ export default function MessagesPage() {
   const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
 
   async function loadMessages(view: MessageView = messageView) {
     const payload = await apiFetch<MessageIncident[]>(`/messages${view === "archived" ? "?archived=true" : ""}`);
     setMessages(payload);
+    setLastSynced(new Date().toISOString());
   }
+
+  useLiveRefresh(() => loadMessages(), {
+    enabled: Boolean(user),
+    intervalMs: 2500,
+    onError: (err) => setError(err instanceof Error ? err.message : "Live message refresh failed"),
+  });
 
   useEffect(() => {
     startTransition(() => {
@@ -190,6 +199,9 @@ export default function MessagesPage() {
           <p className="text-sm font-semibold">{messageView === "active" ? "Active event conversations" : "Archived conversations"}</p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {messageView === "active" ? "Current message center events are shown here." : "Past archived event threads remain available for review."}
+          </p>
+          <p className="mt-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+            Live updates enabled{lastSynced ? ` | Synced ${new Date(lastSynced).toLocaleTimeString()}` : ""}
           </p>
         </div>
         <div className="flex rounded-full bg-panel p-1 dark:bg-[#0B1020]">

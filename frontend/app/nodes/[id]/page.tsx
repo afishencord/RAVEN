@@ -7,6 +7,7 @@ import { useEffect, useState, startTransition } from "react";
 import { AppShell } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch, requireSession } from "@/lib/api";
+import { useLiveRefresh } from "@/lib/live-updates";
 import { NodeDetail, User } from "@/lib/types";
 
 export default function NodeDetailPage() {
@@ -15,6 +16,13 @@ export default function NodeDetailPage() {
   const [user, setUser] = useState<User | null>(null);
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [error, setError] = useState("");
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
+
+  async function refreshDetail() {
+    const payload = await apiFetch<NodeDetail>(`/nodes/${params.id}/detail`);
+    setDetail(payload);
+    setLastSynced(new Date().toISOString());
+  }
 
   useEffect(() => {
     startTransition(() => {
@@ -24,12 +32,17 @@ export default function NodeDetailPage() {
           return;
         }
         setUser(session);
-        apiFetch<NodeDetail>(`/nodes/${params.id}/detail`)
-          .then(setDetail)
+        refreshDetail()
           .catch((err) => setError(err instanceof Error ? err.message : "Failed to load node detail"));
       });
     });
   }, [params.id, router]);
+
+  useLiveRefresh(refreshDetail, {
+    enabled: Boolean(user),
+    intervalMs: 2500,
+    onError: (err) => setError(err instanceof Error ? err.message : "Live node detail refresh failed"),
+  });
 
   if (!user) {
     return null;
@@ -44,6 +57,9 @@ export default function NodeDetailPage() {
       <Link href="/" className="inline-flex rounded-full bg-panel px-4 py-2 text-sm font-medium text-slate-700 dark:bg-[#0B1020] dark:text-slate-200">
         Back to dashboard
       </Link>
+      <p className="mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+        Live updates enabled{lastSynced ? ` | Synced ${new Date(lastSynced).toLocaleTimeString()}` : ""}
+      </p>
 
       {error ? <p className="mt-4 rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
       {!detail ? <p className="mt-6 text-sm text-slate-600 dark:text-slate-300">Loading node history...</p> : null}

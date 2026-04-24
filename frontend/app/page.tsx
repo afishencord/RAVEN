@@ -8,6 +8,7 @@ import { AppShell } from "@/components/app-shell";
 import { NodeForm } from "@/components/node-form";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch, requireSession } from "@/lib/api";
+import { useLiveRefresh } from "@/lib/live-updates";
 import { CredentialRecord, NodeRecord, User } from "@/lib/types";
 
 const filters = ["all", "healthy", "degraded", "down", "disabled"] as const;
@@ -22,6 +23,7 @@ export default function DashboardPage() {
   const [editing, setEditing] = useState<NodeRecord | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
 
   useEffect(() => {
     startTransition(() => {
@@ -39,6 +41,7 @@ export default function DashboardPage() {
           .then(([nodeData, credentialData]) => {
             setNodes(nodeData as NodeRecord[]);
             setCredentials((credentialData as CredentialRecord[]) ?? []);
+            setLastSynced(new Date().toISOString());
           })
           .catch((err) => setError(err instanceof Error ? err.message : "Failed to load dashboard"))
           .finally(() => setLoading(false));
@@ -49,7 +52,14 @@ export default function DashboardPage() {
   async function refreshNodes() {
     const nodeData = await apiFetch<NodeRecord[]>("/nodes");
     setNodes(nodeData);
+    setLastSynced(new Date().toISOString());
   }
+
+  useLiveRefresh(refreshNodes, {
+    enabled: Boolean(user) && !showForm,
+    intervalMs: 3000,
+    onError: (err) => setError(err instanceof Error ? err.message : "Live dashboard refresh failed"),
+  });
 
   async function saveNode(payload: Record<string, unknown>) {
     const path = editing ? `/nodes/${editing.id}` : "/nodes";
@@ -99,7 +109,12 @@ export default function DashboardPage() {
       <section className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
         <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <h3 className="text-xl font-semibold">Monitored nodes</h3>
+            <div>
+              <h3 className="text-xl font-semibold">Monitored nodes</h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Live updates enabled{lastSynced ? ` | Synced ${new Date(lastSynced).toLocaleTimeString()}` : ""}
+              </p>
+            </div>
             {user.role === "admin" ? (
               <button
                 className="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-ember dark:bg-ember"
