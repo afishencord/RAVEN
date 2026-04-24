@@ -15,11 +15,14 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine, migrate_sqlite_schema
-from app.models import ApprovalDecision, Credential, ExecutionTask, Incident, Node, RemediationProfile, User, utcnow
+from app.models import ApprovalDecision, Credential, ExecutionTask, HealthCheckResult, Incident, Node, RemediationProfile, User, utcnow
+from app.services.ai_service import AIRecommendationService
 from app.services.incident_workflow import run_and_record_health_check, write_audit_log
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+ai_service = AIRecommendationService()
+SUCCESSFUL_EXIT_CODES = {0, 3}
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,87 @@ def _proposal_for_incident(incident: Incident, proposal_id: str) -> dict:
         if proposal.get("proposal_id") == proposal_id:
             return proposal
     raise ValueError("Command proposal not found")
+
+
+def _is_successful_exit(exit_code: int) -> bool:
+    return exit_code in SUCCESSFUL_EXIT_CODES
+
+
+def _build_follow_up_context(db: Session, node: Node, incident: Incident) -> tuple[list[dict], list[dict]]:
+    recent_checks = [
+        {
+            "kind": "health_check",
+            "status": check.status,
+            "success": check.success,
+            "http_status": check.http_status,
+            "error_type": check.error_type,
+            "error_detail": check.error_detail,
+            "checked_at": check.checked_at.isoformat(),
+        }
+        for check in (
+            db.query(HealthCheckResult)
+            .filter(HealthCheckResult.node_id == node.id)
+            .order_by(desc(HealthCheckResult.checked_at))
+            .limit(10)
+            .all()
+        )
+    ]
+    recent_executions = (
+        db.query(ExecutionTask)
+        .filter(ExecutionTask.incident_id == incident.id)
+        .order_by(desc(ExecutionTask.queued_at), desc(ExecutionTask.id))
+        .limit(8)
+        .all()
+    )
+    prior_incidents = [
+        {
+            "failure_type": item.failure_type,
+            "summary": item.summary,
+            "started_at": item.started_at.isoformat(),
+            "resolved_at": item.resolved_at.isoformat() if item.resolved_at else None,
+        }
+        for item in (
+            db.query(Incident)
+            .filter(Incident.node_id == node.id, Incident.id != incident.id)
+            .order_by(desc(Incident.started_at))
+            .limit(5)
+            .all()
+        )
+    ]
+    return recent_checks + ai_service.latest_execution_context(node, recent_executions), prior_incidents
+
+
+def _create_follow_up_recommendation(db: Session, node: Node, incident: Incident, task: ExecutionTask, health_status: str) -> None:
+    if not incident.is_active or incident.archived_at is not None or health_status == "healthy":
+        return
+
+    recent_history, prior_incidents = _build_follow_up_context(db, node, incident)
+    recent_history.append(
+        {
+            "kind": "runner_follow_up",
+            "details": "An approved command completed and the incident still needs the next remediation or diagnostic step.",
+            "execution_task_id": task.id,
+            "exit_code": task.exit_code,
+            "post_validation_status": task.post_validation_status,
+        }
+    )
+    payload = ai_service.generate(
+        node=node,
+        incident=incident,
+        recent_history=recent_history,
+        prior_incidents=prior_incidents,
+        workflow_mode="root_cause" if incident.status == "investigating" else "remediation",
+    )
+    recommendation = ai_service.persist(incident=incident, node=node, payload=payload)
+    db.add(recommendation)
+    write_audit_log(
+        db,
+        actor=None,
+        entity_type="incident",
+        entity_id=str(incident.id),
+        action="ai_follow_up_generated",
+        details={"execution_task_id": task.id, "post_validation_status": health_status},
+    )
 
 
 def queue_execution(
@@ -217,11 +301,12 @@ class RunnerDaemon:
         task.exit_code = exit_code
         task.output = output[:8000]
         task.finished_at = utcnow()
-        task.status = "success" if exit_code == 0 else "failed"
+        task.status = "success" if _is_successful_exit(exit_code) else "failed"
         db.commit()
 
         health_row = run_and_record_health_check(db, node)
         task.post_validation_status = health_row.status
+        _create_follow_up_recommendation(db, node, incident, task, health_row.status)
         db.commit()
 
     def _dispatch(self, node: Node, command: str, credential: Credential | None) -> tuple[int, str]:

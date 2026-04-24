@@ -3,7 +3,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db, require_operator_or_admin
-from app.models import AIRecommendation, Incident, IncidentNote, User, utcnow
+from app.models import AIRecommendation, ExecutionTask, HealthCheckResult, Incident, IncidentNote, User, utcnow
 from app.schemas import IncidentActionRequest, IncidentNoteCreate, IncidentNoteRead, IncidentRead, StatusResponse
 from app.services.ai_service import AIRecommendationService
 from app.services.execution_runner import queue_execution, reject_execution
@@ -18,6 +18,51 @@ def _get_incident_or_404(db: Session, incident_id: int) -> Incident:
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     return incident
+
+
+def _recommendation_context(db: Session, incident: Incident) -> tuple[list[dict], list[dict]]:
+    recent_history = [
+        {
+            "kind": "health_check",
+            "status": check.status,
+            "success": check.success,
+            "http_status": check.http_status,
+            "error_type": check.error_type,
+            "error_detail": check.error_detail,
+            "checked_at": check.checked_at.isoformat(),
+        }
+        for check in (
+            db.query(HealthCheckResult)
+            .filter(HealthCheckResult.node_id == incident.node_id)
+            .order_by(desc(HealthCheckResult.checked_at))
+            .limit(10)
+            .all()
+        )
+    ]
+    executions = (
+        db.query(ExecutionTask)
+        .filter(ExecutionTask.incident_id == incident.id)
+        .order_by(desc(ExecutionTask.queued_at), desc(ExecutionTask.id))
+        .limit(8)
+        .all()
+    )
+    recent_history.extend(ai_service.latest_execution_context(incident.node, executions))
+    prior_incidents = [
+        {
+            "failure_type": item.failure_type,
+            "summary": item.summary,
+            "started_at": item.started_at.isoformat(),
+            "resolved_at": item.resolved_at.isoformat() if item.resolved_at else None,
+        }
+        for item in (
+            db.query(Incident)
+            .filter(Incident.node_id == incident.node_id, Incident.id != incident.id)
+            .order_by(desc(Incident.started_at))
+            .limit(5)
+            .all()
+        )
+    ]
+    return recent_history, prior_incidents
 
 
 @router.get("", response_model=list[IncidentRead])
@@ -56,6 +101,19 @@ def unarchive_incident(incident_id: int, db: Session = Depends(get_db), current_
     return StatusResponse(status="unarchived")
 
 
+@router.post("/{incident_id}/close", response_model=StatusResponse)
+def close_incident(incident_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_operator_or_admin)):
+    incident = _get_incident_or_404(db, incident_id)
+    incident.status = "resolved"
+    incident.is_active = False
+    incident.resolved_at = incident.resolved_at or utcnow()
+    incident.archived_at = utcnow()
+    incident.archived_by_id = current_user.id
+    write_audit_log(db, actor=current_user, entity_type="incident", entity_id=str(incident.id), action="closed_archived", details={})
+    db.commit()
+    return StatusResponse(status="closed")
+
+
 @router.post("/{incident_id}/notes", response_model=IncidentNoteRead)
 def add_note(incident_id: int, payload: IncidentNoteCreate, db: Session = Depends(get_db), current_user: User = Depends(require_operator_or_admin)):
     incident = _get_incident_or_404(db, incident_id)
@@ -73,12 +131,44 @@ def refresh_recommendation(incident_id: int, db: Session = Depends(get_db), curr
     node = incident.node
     if not node:
         raise HTTPException(status_code=404, detail="Incident node not found")
-    payload = ai_service.generate(node=node, incident=incident, recent_history=[], prior_incidents=[])
+    recent_history, prior_incidents = _recommendation_context(db, incident)
+    payload = ai_service.generate(node=node, incident=incident, recent_history=recent_history, prior_incidents=prior_incidents)
     recommendation = ai_service.persist(incident=incident, node=node, payload=payload)
     db.add(recommendation)
     write_audit_log(db, actor=current_user, entity_type="incident", entity_id=str(incident.id), action="recommendation_refreshed", details={})
     db.commit()
     return StatusResponse(status="refreshed")
+
+
+@router.post("/{incident_id}/investigate-further", response_model=StatusResponse)
+def investigate_further(incident_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_operator_or_admin)):
+    incident = _get_incident_or_404(db, incident_id)
+    node = incident.node
+    if not node:
+        raise HTTPException(status_code=404, detail="Incident node not found")
+    incident.status = "investigating"
+    incident.archived_at = None
+    incident.archived_by_id = None
+    recent_history, prior_incidents = _recommendation_context(db, incident)
+    recent_history.append(
+        {
+            "kind": "operator_intent",
+            "intent": "investigate_further",
+            "details": "Operator requested a root cause analysis workflow after apparent recovery.",
+        }
+    )
+    payload = ai_service.generate(
+        node=node,
+        incident=incident,
+        recent_history=recent_history,
+        prior_incidents=prior_incidents,
+        workflow_mode="root_cause",
+    )
+    recommendation = ai_service.persist(incident=incident, node=node, payload=payload)
+    db.add(recommendation)
+    write_audit_log(db, actor=current_user, entity_type="incident", entity_id=str(incident.id), action="root_cause_investigation_started", details={})
+    db.commit()
+    return StatusResponse(status="investigating")
 
 
 @router.post("/{incident_id}/approve", response_model=StatusResponse)
@@ -89,6 +179,8 @@ def approve_remediation(
     current_user: User = Depends(require_operator_or_admin),
 ):
     incident = _get_incident_or_404(db, incident_id)
+    if not payload.proposal_id:
+        raise HTTPException(status_code=400, detail="proposal_id is required")
     recommendation = (
         db.query(AIRecommendation)
         .filter(AIRecommendation.incident_id == incident.id)
@@ -117,6 +209,8 @@ def reject_remediation(
     current_user: User = Depends(require_operator_or_admin),
 ):
     incident = _get_incident_or_404(db, incident_id)
+    if not payload.proposal_id:
+        raise HTTPException(status_code=400, detail="proposal_id is required")
     recommendation = (
         db.query(AIRecommendation)
         .filter(AIRecommendation.incident_id == incident.id)

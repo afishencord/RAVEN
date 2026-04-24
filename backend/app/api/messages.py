@@ -20,12 +20,13 @@ def list_messages(
     incidents = query.order_by(desc(Incident.started_at), desc(Incident.id)).limit(50).all()
     response: list[MessageIncidentRead] = []
     for incident in incidents:
-        latest_recommendation = (
+        recommendations = (
             db.query(AIRecommendation)
             .filter(AIRecommendation.incident_id == incident.id)
-            .order_by(desc(AIRecommendation.created_at), desc(AIRecommendation.id))
-            .first()
+            .order_by(AIRecommendation.created_at.asc(), AIRecommendation.id.asc())
+            .all()
         )
+        latest_recommendation = recommendations[-1] if recommendations else None
         notes = (
             db.query(IncidentNote)
             .filter(IncidentNote.incident_id == incident.id)
@@ -51,6 +52,7 @@ def list_messages(
                     incident=incident,
                     node=node,
                     latest_recommendation=latest_recommendation,
+                    recommendations=recommendations,
                     notes=notes,
                     executions=executions,
                     approvals=approvals,

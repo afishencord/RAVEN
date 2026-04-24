@@ -129,12 +129,25 @@ export type ExecutionTask = {
   approved_by_id: number;
 };
 
+export type ApprovalDecision = {
+  id: number;
+  incident_id: number;
+  recommendation_id?: number | null;
+  execution_task_id?: number | null;
+  action_key: string;
+  decision: string;
+  note?: string | null;
+  decided_by_id: number;
+  decided_at: string;
+};
+
 export type NodeDetail = {
   node: NodeRecord;
   health_checks: HealthCheck[];
   incidents: Incident[];
   recommendations: Recommendation[];
   executions: ExecutionTask[];
+  approvals: ApprovalDecision[];
   credential?: CredentialRecord | null;
 };
 
@@ -142,6 +155,8 @@ export type MessageIncident = {
   incident: Incident;
   node: NodeRecord;
   latest_recommendation?: Recommendation | null;
+  recommendations: Recommendation[];
   notes: IncidentNote[];
   executions: ExecutionTask[];
+  approvals: ApprovalDecision[];
 };

@@ -265,7 +265,7 @@ class NodeDetailRead(BaseModel):
 
 
 class IncidentActionRequest(BaseModel):
-    proposal_id: str
+    proposal_id: str | None = None
     note: str | None = None
 
 
@@ -273,6 +273,7 @@ class MessageIncidentRead(BaseModel):
     incident: IncidentRead
     node: NodeRead
     latest_recommendation: AIRecommendationRead | None
+    recommendations: list[AIRecommendationRead]
     notes: list[IncidentNoteRead]
     executions: list[ExecutionTaskRead]
     approvals: list[ApprovalDecisionRead]
