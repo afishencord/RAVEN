@@ -84,7 +84,6 @@ export default function CredentialsPage() {
     <AppShell
       user={user}
       title="Execution credentials"
-      subtitle="Manage admin-only credentials used by runner and agent execution routes."
     >
       {error ? <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
 
