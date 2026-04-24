@@ -64,6 +64,14 @@ def _unique_proposal_id(base: str, existing: set[str], seed: str) -> str:
     return candidate
 
 
+def _sentence_limit(text: str, max_sentences: int = 5) -> str:
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    sentences = [part.strip() for part in parts if part.strip()]
+    if not sentences:
+        return text.strip()
+    return " ".join(sentences[:max_sentences])
+
+
 def _fallback_commands(node: Node, incident: Incident, recent_history: list[dict] | None = None, existing_ids: set[str] | None = None) -> list[dict]:
     health_url = build_health_url(node)
     subject = node.context_text or node.execution_target
@@ -148,8 +156,8 @@ def _fallback_recommendation(node: Node, incident: Incident, recent_history: lis
         "Run the least risky diagnostic command before attempting a restart.",
     ]
     if output_excerpt:
-        summary = "I reviewed the latest command output and need the next evidence-gathering step before choosing a remediation."
-        rationale = f"The latest command produced this output excerpt: {output_excerpt}"
+        summary = "I reviewed the latest command output and need one more evidence pass before choosing a remediation."
+        rationale = f"The previous command output points to this signal: {output_excerpt[:500]}. I am proposing validation, runtime-state, and log checks to confirm whether the issue is still active."
         troubleshooting_steps = [
             "Compare the latest command output with the current post-validation health status.",
             "Validate the endpoint again to confirm whether the failure is persistent or intermittent.",
@@ -212,7 +220,10 @@ def _normalize_payload(node: Node, incident: Incident, payload: dict, recent_his
     if output_excerpt and "output" not in summary.lower() and "observ" not in summary.lower():
         summary = f"I reviewed the latest command output. {summary}"
     if output_excerpt and output_excerpt[:120] not in rationale:
-        rationale = f"{rationale}\n\nObserved command output excerpt: {output_excerpt}"
+        rationale = f"{rationale} Observed command output excerpt: {output_excerpt}"
+    if output_excerpt:
+        summary = _sentence_limit(summary, max_sentences=2)
+        rationale = _sentence_limit(rationale, max_sentences=3)
 
     return {
         "suspected_issue_classification": str(payload.get("suspected_issue_classification") or fallback["suspected_issue_classification"]),
@@ -272,6 +283,8 @@ class AIRecommendationService:
             "instructions": [
                 "Return strict JSON only.",
                 "Initial troubleshooting must be grounded in node.context_text and the incident details.",
+                "Keep summary plus rationale concise: 3 to 5 sentences total before the command cards.",
+                "For follow-up turns, summary should be 1 to 2 sentences and rationale should be 2 to 3 sentences.",
                 "Propose exactly 3 concrete shell commands that the operator can approve individually.",
                 "Commands must be safe, single-purpose, and executable by the selected execution_mode.",
                 "Do not reuse any previous_proposal_ids.",

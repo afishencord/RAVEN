@@ -94,12 +94,20 @@ function buildTimeline(message: MessageIncident, operatorCanAct: boolean) {
   return entries.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 }
 
+function latestActiveIncidentId(messages: MessageIncident[]) {
+  const active = messages
+    .filter((message) => !message.incident.archived_at)
+    .sort((a, b) => new Date(b.incident.started_at).getTime() - new Date(a.incident.started_at).getTime());
+  return active[0]?.incident.id ?? null;
+}
+
 export default function MessagesPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [messages, setMessages] = useState<MessageIncident[]>([]);
   const [messageView, setMessageView] = useState<MessageView>("active");
   const [minimizedMessages, setMinimizedMessages] = useState<Set<number>>(() => new Set());
+  const [manualMessageToggles, setManualMessageToggles] = useState<Set<number>>(() => new Set());
   const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -108,6 +116,22 @@ export default function MessagesPage() {
   async function loadMessages(view: MessageView = messageView) {
     const payload = await apiFetch<MessageIncident[]>(`/messages${view === "archived" ? "?archived=true" : ""}`);
     setMessages(payload);
+    setMinimizedMessages((current) => {
+      const latestActiveId = view === "active" ? latestActiveIncidentId(payload) : null;
+      const next = new Set<number>();
+      for (const message of payload) {
+        if (manualMessageToggles.has(message.incident.id)) {
+          if (current.has(message.incident.id)) {
+            next.add(message.incident.id);
+          }
+          continue;
+        }
+        if (message.incident.id !== latestActiveId) {
+          next.add(message.incident.id);
+        }
+      }
+      return next;
+    });
     setLastSynced(new Date().toISOString());
   }
 
@@ -135,6 +159,7 @@ export default function MessagesPage() {
   }
 
   function toggleMinimized(incidentId: number) {
+    setManualMessageToggles((current) => new Set(current).add(incidentId));
     setMinimizedMessages((current) => {
       const next = new Set(current);
       if (next.has(incidentId)) {
