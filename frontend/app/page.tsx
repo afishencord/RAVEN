@@ -93,8 +93,8 @@ export default function DashboardPage() {
   return (
     <AppShell
       user={user}
-      title="Node dashboard"
-      subtitle="Track monitored application nodes, adjust health-check coverage, and manage remediation execution from one control surface."
+      title="Dashboard"
+      subtitle="Real-time overview of your enterprise network operations"
     >
       <section className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
         <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
