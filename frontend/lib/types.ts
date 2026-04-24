@@ -71,6 +71,7 @@ export type Incident = {
   last_failure_at: string;
   resolved_at?: string | null;
   acknowledged_at?: string | null;
+  archived_at?: string | null;
   is_active: boolean;
 };
 

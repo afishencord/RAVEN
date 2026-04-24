@@ -8,16 +8,20 @@ import { StatusBadge } from "@/components/status-badge";
 import { apiFetch, requireSession } from "@/lib/api";
 import { MessageIncident, User } from "@/lib/types";
 
+type MessageView = "active" | "archived";
+
 export default function MessagesPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [messages, setMessages] = useState<MessageIncident[]>([]);
+  const [messageView, setMessageView] = useState<MessageView>("active");
+  const [minimizedMessages, setMinimizedMessages] = useState<Set<number>>(() => new Set());
   const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  async function loadMessages() {
-    const payload = await apiFetch<MessageIncident[]>("/messages");
+  async function loadMessages(view: MessageView = messageView) {
+    const payload = await apiFetch<MessageIncident[]>(`/messages${view === "archived" ? "?archived=true" : ""}`);
     setMessages(payload);
   }
 
@@ -40,11 +44,53 @@ export default function MessagesPage() {
     );
   }
 
+  function toggleMinimized(incidentId: number) {
+    setMinimizedMessages((current) => {
+      const next = new Set(current);
+      if (next.has(incidentId)) {
+        next.delete(incidentId);
+      } else {
+        next.add(incidentId);
+      }
+      return next;
+    });
+  }
+
+  async function changeMessageView(view: MessageView) {
+    setMessageView(view);
+    setError("");
+    try {
+      await loadMessages(view);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load messages");
+    }
+  }
+
   async function refreshMessagesWithFollowUp() {
     await loadMessages();
     window.setTimeout(() => {
       loadMessages().catch((err) => setError(err instanceof Error ? err.message : "Failed to refresh messages"));
     }, 750);
+  }
+
+  async function setArchiveState(incidentId: number, archived: boolean) {
+    const path = archived ? "/archive" : "/unarchive";
+    const actionKey = `${incidentId}:${path}:manual`;
+    setActiveAction(actionKey);
+    setError("");
+    try {
+      await apiFetch(`/incidents/${incidentId}${path}`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      setMessages((current) => current.filter((message) => message.incident.id !== incidentId));
+      await loadMessages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : (archived ? "Failed to archive message" : "Failed to restore message"));
+      await loadMessages();
+    } finally {
+      setActiveAction(null);
+    }
   }
 
   async function runAction(incidentId: number, path: string, proposalId: string) {
@@ -139,8 +185,34 @@ export default function MessagesPage() {
     >
       {error ? <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
 
+      <div className="mb-6 flex flex-col gap-3 rounded-[2rem] border border-white/60 bg-white/70 p-4 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold">{messageView === "active" ? "Active event conversations" : "Archived conversations"}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {messageView === "active" ? "Current message center events are shown here." : "Past archived event threads remain available for review."}
+          </p>
+        </div>
+        <div className="flex rounded-full bg-panel p-1 dark:bg-white/5">
+          {(["active", "archived"] as MessageView[]).map((view) => (
+            <button
+              key={view}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                messageView === view ? "bg-ink text-white dark:bg-ember" : "text-slate-600 hover:text-ink dark:text-slate-300 dark:hover:text-white"
+              }`}
+              onClick={() => changeMessageView(view)}
+            >
+              {view === "active" ? "Active" : "Archived"}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid gap-6">
-        {messages.map((message) => (
+        {messages.map((message) => {
+          const isMinimized = minimizedMessages.has(message.incident.id);
+          const archiveAction = messageView === "active" ? "/archive" : "/unarchive";
+          const archiveActionKey = `${message.incident.id}:${archiveAction}:manual`;
+          return (
           <article key={message.incident.id} className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -154,15 +226,34 @@ export default function MessagesPage() {
                   Alerted {new Date(message.incident.started_at).toLocaleString()} | {message.incident.failure_type}
                 </p>
               </div>
-              <button
-                className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200"
-                disabled={activeAction === `node:${message.node.id}:rerun`}
-                onClick={() => rerunCheck(message.node.id)}
-              >
-                {activeAction === `node:${message.node.id}:rerun` ? "Refreshing..." : "Re-run health check"}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200"
+                  onClick={() => toggleMinimized(message.incident.id)}
+                >
+                  {isMinimized ? "Expand" : "Minimize"}
+                </button>
+                {user.role === "operator" || user.role === "admin" ? (
+                  <button
+                    className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10"
+                    disabled={activeAction === archiveActionKey}
+                    onClick={() => setArchiveState(message.incident.id, messageView === "active")}
+                  >
+                    {activeAction === archiveActionKey ? "Updating..." : messageView === "active" ? "Archive" : "Restore"}
+                  </button>
+                ) : null}
+                <button
+                  className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200"
+                  disabled={activeAction === `node:${message.node.id}:rerun`}
+                  onClick={() => rerunCheck(message.node.id)}
+                >
+                  {activeAction === `node:${message.node.id}:rerun` ? "Refreshing..." : "Re-run health check"}
+                </button>
+              </div>
             </div>
 
+            {!isMinimized ? (
+              <>
             <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_0.95fr]">
               <section className="rounded-3xl bg-panel p-5 dark:bg-white/5">
                 <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">AI summary</p>
@@ -290,8 +381,16 @@ export default function MessagesPage() {
                 </div>
               </section>
             </div>
+              </>
+            ) : null}
           </article>
-        ))}
+          );
+        })}
+        {!messages.length ? (
+          <div className="rounded-[2rem] border border-white/60 bg-white/70 p-8 text-center text-sm text-slate-500 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55 dark:text-slate-400">
+            {messageView === "active" ? "No active event conversations." : "No archived conversations yet."}
+          </div>
+        ) : null}
       </div>
     </AppShell>
   );

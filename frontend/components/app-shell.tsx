@@ -10,7 +10,7 @@ import { User } from "@/lib/types";
 
 type Props = {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   user: User;
   children: ReactNode;
 };
@@ -18,7 +18,7 @@ type Props = {
 export function AppShell({ title, subtitle, user, children }: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const showChromeCopy = pathname !== "/" && pathname !== "/messages";
+  const showChromeCopy = pathname !== "/" && pathname !== "/messages" && pathname !== "/credentials";
   const navItems = [
     { href: "/", label: "Dashboard" },
     { href: "/messages", label: "Message Center" },
@@ -73,7 +73,7 @@ export function AppShell({ title, subtitle, user, children }: Props) {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-ember">Control Center</p>
                 <h2 className="mt-2 text-3xl font-semibold">{title}</h2>
-                {showChromeCopy ? <p className="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-300">{subtitle}</p> : null}
+                {showChromeCopy && subtitle ? <p className="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-300">{subtitle}</p> : null}
               </div>
               <div className="flex items-center gap-3 self-start md:self-auto">
                 <div className="rounded-2xl bg-panel px-4 py-3 text-sm text-slate-600 dark:bg-white/5 dark:text-slate-300">
