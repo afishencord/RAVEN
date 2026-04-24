@@ -10,19 +10,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#161b24",
-        cloud: "#f5efe8",
-        panel: "#fffaf4",
-        ember: "#8b5cf6",
-        moss: "#2f6f57",
-        ruby: "#a63d40",
-        haze: "#7b8794",
+        ink: "#111827",
+        cloud: "#F7F8FB",
+        panel: "#FFFFFF",
+        ember: "#7C3AED",
+        moss: "#16A34A",
+        ruby: "#EF4444",
+        haze: "#64748B",
       },
       fontFamily: {
         sans: ["IBM Plex Sans", "Avenir Next", "Segoe UI", "sans-serif"],
       },
       boxShadow: {
-        panel: "0 20px 60px rgba(22, 27, 36, 0.12)",
+        panel: "0 12px 32px rgba(15, 23, 42, 0.08)",
       },
     },
   },

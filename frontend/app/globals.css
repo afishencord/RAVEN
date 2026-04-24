@@ -4,18 +4,18 @@
 
 :root {
   color-scheme: light;
-  --bg-base: #ece4d8;
-  --text-base: #161b24;
+  --bg-base: #f7f8fb;
+  --text-base: #111827;
   --field-bg: #ffffff;
-  --field-text: #161b24;
-  --field-border: #e2e8f0;
+  --field-text: #111827;
+  --field-border: #e5e7eb;
 }
 
 .dark {
   color-scheme: dark;
-  --bg-base: #09090f;
+  --bg-base: #070b16;
   --text-base: #f3f4f6;
-  --field-bg: rgba(15, 23, 42, 0.92);
+  --field-bg: #050814;
   --field-text: #f3f4f6;
   --field-border: rgba(255, 255, 255, 0.12);
 }
