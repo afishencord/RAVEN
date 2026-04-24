@@ -49,3 +49,6 @@ Thumbs.db
 *.swp
 *.swo
 .codex
+
+# Local agent/project context
+Context.md
