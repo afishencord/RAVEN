@@ -185,14 +185,14 @@ export default function MessagesPage() {
     >
       {error ? <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
 
-      <div className="mb-6 flex flex-col gap-3 rounded-[2rem] border border-white/60 bg-white/70 p-4 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-6 flex flex-col gap-3 rounded-[2rem] border border-[#E5E7EB] bg-white p-4 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-semibold">{messageView === "active" ? "Active event conversations" : "Archived conversations"}</p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {messageView === "active" ? "Current message center events are shown here." : "Past archived event threads remain available for review."}
           </p>
         </div>
-        <div className="flex rounded-full bg-panel p-1 dark:bg-white/5">
+        <div className="flex rounded-full bg-panel p-1 dark:bg-[#0B1020]">
           {(["active", "archived"] as MessageView[]).map((view) => (
             <button
               key={view}
@@ -213,7 +213,7 @@ export default function MessagesPage() {
           const archiveAction = messageView === "active" ? "/archive" : "/unarchive";
           const archiveActionKey = `${message.incident.id}:${archiveAction}:manual`;
           return (
-          <article key={message.incident.id} className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+          <article key={message.incident.id} className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -228,14 +228,14 @@ export default function MessagesPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
-                  className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200"
+                  className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-[#0B1020] dark:text-slate-200"
                   onClick={() => toggleMinimized(message.incident.id)}
                 >
                   {isMinimized ? "Expand" : "Minimize"}
                 </button>
                 {user.role === "operator" || user.role === "admin" ? (
                   <button
-                    className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10"
+                    className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-[#0B1020] dark:text-slate-200 dark:ring-slate-800"
                     disabled={activeAction === archiveActionKey}
                     onClick={() => setArchiveState(message.incident.id, messageView === "active")}
                   >
@@ -243,7 +243,7 @@ export default function MessagesPage() {
                   </button>
                 ) : null}
                 <button
-                  className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200"
+                  className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-[#0B1020] dark:text-slate-200"
                   disabled={activeAction === `node:${message.node.id}:rerun`}
                   onClick={() => rerunCheck(message.node.id)}
                 >
@@ -255,7 +255,7 @@ export default function MessagesPage() {
             {!isMinimized ? (
               <>
             <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_0.95fr]">
-              <section className="rounded-3xl bg-panel p-5 dark:bg-white/5">
+              <section className="rounded-3xl bg-panel p-5 dark:bg-[#0B1020]">
                 <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">AI summary</p>
                 <p className="mt-3 text-lg font-semibold">{message.latest_recommendation?.summary ?? "No recommendation generated yet."}</p>
                 <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
@@ -272,11 +272,11 @@ export default function MessagesPage() {
                 <p className="mt-5 text-sm text-slate-600 dark:text-slate-300">{message.latest_recommendation?.rationale}</p>
               </section>
 
-              <section className="rounded-3xl bg-panel p-5 dark:bg-white/5">
+              <section className="rounded-3xl bg-panel p-5 dark:bg-[#0B1020]">
                 <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Proposed command cards</p>
                 <div className="mt-4 space-y-3">
                   {(message.latest_recommendation?.proposed_commands ?? []).map((command) => (
-                    <div key={command.proposal_id} className="rounded-3xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-950/40">
+                    <div key={command.proposal_id} className="rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#050814]">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold">{command.title}</p>
@@ -313,14 +313,14 @@ export default function MessagesPage() {
                   {user.role === "operator" || user.role === "admin" ? (
                     <>
                       <button
-                        className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10"
+                        className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-[#0B1020] dark:text-slate-200 dark:ring-slate-800"
                         disabled={activeAction === `${message.incident.id}:/acknowledge:manual`}
                         onClick={() => runAction(message.incident.id, "/acknowledge", "manual")}
                       >
                         {activeAction === `${message.incident.id}:/acknowledge:manual` ? "Updating..." : "Acknowledge"}
                       </button>
                       <button
-                        className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10"
+                        className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-[#0B1020] dark:text-slate-200 dark:ring-slate-800"
                         disabled={activeAction === `${message.incident.id}:/recommendation/refresh:manual`}
                         onClick={() => runAction(message.incident.id, "/recommendation/refresh", "manual")}
                       >
@@ -333,13 +333,13 @@ export default function MessagesPage() {
             </div>
 
             <div className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-              <section className="rounded-3xl bg-panel p-5 dark:bg-white/5">
+              <section className="rounded-3xl bg-panel p-5 dark:bg-[#0B1020]">
                 <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Operator notes</p>
                 <form className="mt-4" onSubmit={(event) => submitNote(event, message.incident.id)}>
                   <textarea
                     value={noteDrafts[message.incident.id] ?? ""}
                     onChange={(event) => setNoteDrafts((current) => ({ ...current, [message.incident.id]: event.target.value }))}
-                    className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-white/10 dark:bg-slate-950/40 dark:text-white"
+                    className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-slate-800 dark:bg-[#050814] dark:text-white"
                     placeholder="Add a note for the next operator..."
                   />
                   {user.role === "operator" || user.role === "admin" ? (
@@ -350,7 +350,7 @@ export default function MessagesPage() {
                 </form>
                 <div className="mt-4 space-y-3">
                   {message.notes.map((note) => (
-                    <div key={note.id} className="rounded-2xl bg-white p-3 text-sm text-slate-600 dark:bg-slate-950/40 dark:text-slate-300">
+                    <div key={note.id} className="rounded-2xl bg-white p-3 text-sm text-slate-600 dark:bg-[#050814] dark:text-slate-300">
                       <p>{note.note}</p>
                       <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{new Date(note.created_at).toLocaleString()}</p>
                     </div>
@@ -358,12 +358,12 @@ export default function MessagesPage() {
                 </div>
               </section>
 
-              <section className="rounded-3xl bg-panel p-5 dark:bg-white/5">
+              <section className="rounded-3xl bg-panel p-5 dark:bg-[#0B1020]">
                 <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Execution history</p>
                 <div className="mt-4 space-y-3">
                   {message.executions.length ? (
                     message.executions.map((execution) => (
-                      <div key={execution.id} className="rounded-2xl bg-white p-4 dark:bg-slate-950/40">
+                      <div key={execution.id} className="rounded-2xl bg-white p-4 dark:bg-[#050814]">
                         <div className="flex items-center justify-between gap-3">
                           <StatusBadge status={execution.status} />
                           <span className="text-xs text-slate-500 dark:text-slate-400">{new Date(execution.queued_at).toLocaleString()}</span>
@@ -387,7 +387,7 @@ export default function MessagesPage() {
           );
         })}
         {!messages.length ? (
-          <div className="rounded-[2rem] border border-white/60 bg-white/70 p-8 text-center text-sm text-slate-500 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55 dark:text-slate-400">
+          <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-8 text-center text-sm text-slate-500 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:text-slate-400 dark:shadow-none">
             {messageView === "active" ? "No active event conversations." : "No archived conversations yet."}
           </div>
         ) : null}

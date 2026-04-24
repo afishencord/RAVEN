@@ -97,7 +97,7 @@ export default function DashboardPage() {
       subtitle="Real-time overview of your enterprise network operations"
     >
       <section className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
-        <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+        <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <h3 className="text-xl font-semibold">Monitored nodes</h3>
             {user.role === "admin" ? (
@@ -117,7 +117,7 @@ export default function DashboardPage() {
             {filters.map((entry) => (
               <button
                 key={entry}
-                className={`rounded-full px-4 py-2 text-sm font-medium ${filter === entry ? "bg-ink text-white dark:bg-ember" : "bg-panel text-slate-700 dark:bg-white/5 dark:text-slate-200"}`}
+                className={`rounded-full px-4 py-2 text-sm font-medium ${filter === entry ? "bg-ink text-white dark:bg-ember" : "bg-panel text-slate-700 dark:bg-[#0B1020] dark:text-slate-200"}`}
                 onClick={() => setFilter(entry)}
               >
                 {entry}
@@ -128,9 +128,9 @@ export default function DashboardPage() {
           {error ? <p className="mt-4 rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
           {loading ? <p className="mt-6 text-sm text-slate-600 dark:text-slate-300">Loading nodes...</p> : null}
 
-          <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200 dark:border-white/10">
+          <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200 dark:border-slate-800">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-panel dark:bg-white/5">
+              <thead className="bg-panel dark:bg-[#0B1020]">
                 <tr className="text-left text-slate-500 dark:text-slate-300">
                   <th className="px-4 py-3 font-medium">Node</th>
                   <th className="px-4 py-3 font-medium">Execution</th>
@@ -140,7 +140,7 @@ export default function DashboardPage() {
                   <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 bg-white dark:divide-white/10 dark:bg-slate-950/35">
+              <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-[#050814]">
                 {filteredNodes.map((node) => (
                   <tr key={node.id}>
                     <td className="px-4 py-4">
@@ -165,10 +165,10 @@ export default function DashboardPage() {
                       <div className="flex flex-wrap gap-2">
                         {user.role === "admin" ? (
                           <>
-                            <button className="rounded-full bg-panel px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200" onClick={() => { setEditing(node); setShowForm(true); }}>
+                            <button className="rounded-full bg-panel px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-[#0B1020] dark:text-slate-200" onClick={() => { setEditing(node); setShowForm(true); }}>
                               Edit
                             </button>
-                            <button className="rounded-full bg-panel px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200" onClick={() => toggleNode(node)}>
+                            <button className="rounded-full bg-panel px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-[#0B1020] dark:text-slate-200" onClick={() => toggleNode(node)}>
                               {node.is_enabled ? "Disable" : "Enable"}
                             </button>
                             <button className="rounded-full bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 dark:border dark:border-rose-900" onClick={() => deleteNode(node.id)}>
@@ -195,7 +195,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+          <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
             <h3 className="text-xl font-semibold">Fleet snapshot</h3>
             <div className="mt-5 grid gap-4">
               {[
@@ -204,7 +204,7 @@ export default function DashboardPage() {
                 ["With Context", nodes.filter((node) => node.context_text?.trim()).length.toString()],
                 ["With Credentials", nodes.filter((node) => node.credential_id).length.toString()],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-3xl bg-panel px-5 py-4 dark:bg-white/5">
+                <div key={label} className="rounded-3xl bg-panel px-5 py-4 dark:bg-[#0B1020]">
                   <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">{label}</p>
                   <p className="mt-2 text-3xl font-semibold">{value}</p>
                 </div>
@@ -212,14 +212,14 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+          <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
             <h3 className="text-xl font-semibold">Execution modes</h3>
             <div className="mt-4 space-y-4">
-              <div className="rounded-3xl bg-panel p-4 dark:bg-white/5">
+              <div className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                 <p className="font-semibold">Runner</p>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Centralized execution through `raven-runner` using local, SSH, or API dispatch.</p>
               </div>
-              <div className="rounded-3xl bg-panel p-4 dark:bg-white/5">
+              <div className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                 <p className="font-semibold">Agent</p>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Remote command execution through a node-local agent endpoint using approved command cards.</p>
               </div>
@@ -234,15 +234,15 @@ export default function DashboardPage() {
       </section>
 
       {showForm ? (
-        <section className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/55 px-4 py-8 backdrop-blur-sm">
-          <div className="max-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-auto rounded-[2rem] border border-white/60 bg-white/95 p-6 shadow-panel dark:border-white/10 dark:bg-slate-950/95">
+        <section className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/55 px-4 py-8 ">
+          <div className="max-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-auto rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold">{editing ? "Edit node" : "Add node"}</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-300">Node definitions drive troubleshooting context, command policy, and execution routing.</p>
               </div>
               <button
-                className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-white/5 dark:text-slate-200"
+                className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-[#0B1020] dark:text-slate-200"
                 onClick={() => {
                   setShowForm(false);
                   setEditing(null);

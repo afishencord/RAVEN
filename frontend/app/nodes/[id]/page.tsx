@@ -41,7 +41,7 @@ export default function NodeDetailPage() {
       title={detail ? detail.node.name : "Node detail"}
       subtitle="Inspect health history, incident context, command recommendations, and execution timeline for a single node."
     >
-      <Link href="/" className="inline-flex rounded-full bg-panel px-4 py-2 text-sm font-medium text-slate-700 dark:bg-white/5 dark:text-slate-200">
+      <Link href="/" className="inline-flex rounded-full bg-panel px-4 py-2 text-sm font-medium text-slate-700 dark:bg-[#0B1020] dark:text-slate-200">
         Back to dashboard
       </Link>
 
@@ -51,7 +51,7 @@ export default function NodeDetailPage() {
       {detail ? (
         <div className="mt-6 grid gap-6">
           <section className="grid gap-6 lg:grid-cols-[1fr_1fr_1fr]">
-            <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+            <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Status</p>
               <div className="mt-3">
                 <StatusBadge status={detail.node.is_enabled ? detail.node.current_status : "disabled"} />
@@ -59,13 +59,13 @@ export default function NodeDetailPage() {
               <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{detail.node.host}{detail.node.port ? `:${detail.node.port}` : ""}</p>
               <p className="text-sm text-slate-600 dark:text-slate-300">{detail.node.url ?? "URL derived from host/port"}</p>
             </div>
-            <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+            <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Execution</p>
               <p className="mt-3 text-lg font-semibold">{detail.node.execution_mode}</p>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{detail.node.execution_target}</p>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{detail.credential ? `${detail.credential.name} (${detail.credential.kind})` : "No credential attached"}</p>
             </div>
-            <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+            <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Node context</p>
               <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{detail.node.context_text ?? "No troubleshooting context configured."}</p>
               <p className="mt-3 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Approved command policy</p>
@@ -74,11 +74,11 @@ export default function NodeDetailPage() {
           </section>
 
           <section className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+            <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <h3 className="text-xl font-semibold">Health check history</h3>
               <div className="mt-4 space-y-3">
                 {detail.health_checks.map((check) => (
-                  <div key={check.id} className="rounded-3xl bg-panel p-4 dark:bg-white/5">
+                  <div key={check.id} className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                     <div className="flex items-center justify-between gap-3">
                       <StatusBadge status={check.status} />
                       <span className="text-xs text-slate-500 dark:text-slate-400">{new Date(check.checked_at).toLocaleString()}</span>
@@ -92,11 +92,11 @@ export default function NodeDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+            <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <h3 className="text-xl font-semibold">Incident history</h3>
               <div className="mt-4 space-y-3">
                 {detail.incidents.map((incident) => (
-                  <div key={incident.id} className="rounded-3xl bg-panel p-4 dark:bg-white/5">
+                  <div key={incident.id} className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                     <div className="flex items-center justify-between gap-3">
                       <StatusBadge status={incident.status} />
                       <span className="text-xs text-slate-500 dark:text-slate-400">{new Date(incident.started_at).toLocaleString()}</span>
@@ -110,11 +110,11 @@ export default function NodeDetailPage() {
           </section>
 
           <section className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+            <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <h3 className="text-xl font-semibold">Recommendation history</h3>
               <div className="mt-4 space-y-3">
                 {detail.recommendations.map((recommendation) => (
-                  <div key={recommendation.id} className="rounded-3xl bg-panel p-4 dark:bg-white/5">
+                  <div key={recommendation.id} className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{recommendation.model_name}</p>
                     <p className="mt-2 font-semibold">{recommendation.summary}</p>
                     <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
@@ -124,7 +124,7 @@ export default function NodeDetailPage() {
                     </ul>
                     <div className="mt-4 space-y-3">
                       {recommendation.proposed_commands.map((command) => (
-                        <div key={command.proposal_id} className="rounded-2xl bg-white p-3 dark:bg-slate-950/40">
+                        <div key={command.proposal_id} className="rounded-2xl bg-white p-3 dark:bg-[#050814]">
                           <p className="font-semibold">{command.title}</p>
                           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{command.target_summary}</p>
                           <pre className="mt-3 rounded-2xl bg-ink p-3 text-xs text-white">{command.command}</pre>
@@ -136,11 +136,11 @@ export default function NodeDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+            <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <h3 className="text-xl font-semibold">Execution history</h3>
               <div className="mt-4 space-y-3">
                 {detail.executions.map((task) => (
-                  <div key={task.id} className="rounded-3xl bg-panel p-4 dark:bg-white/5">
+                  <div key={task.id} className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                     <div className="flex items-center justify-between gap-3">
                       <StatusBadge status={task.status} />
                       <span className="text-xs text-slate-500 dark:text-slate-400">{new Date(task.queued_at).toLocaleString()}</span>

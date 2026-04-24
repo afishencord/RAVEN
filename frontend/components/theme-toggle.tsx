@@ -28,7 +28,7 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="rounded-full border border-slate-300/80 bg-white/75 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-ember hover:text-ember dark:border-white/15 dark:bg-white/5 dark:text-slate-200"
+      className="rounded-full border border-slate-300/80 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-ember hover:text-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-200"
       onClick={() => {
         const nextTheme = theme === "dark" ? "light" : "dark";
         setTheme(nextTheme);

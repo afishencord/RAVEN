@@ -17,7 +17,7 @@
   --text-base: #f3f4f6;
   --field-bg: #050814;
   --field-text: #f3f4f6;
-  --field-border: rgba(255, 255, 255, 0.12);
+  --field-border: #1e293b;
 }
 
 * {

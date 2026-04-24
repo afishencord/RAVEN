@@ -88,7 +88,7 @@ export default function CredentialsPage() {
       {error ? <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
 
       <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <form className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55" onSubmit={submitCredential}>
+        <form className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none" onSubmit={submitCredential}>
           <h3 className="text-xl font-semibold">Add credential</h3>
           <div className="mt-5 grid gap-4">
             {[
@@ -102,7 +102,7 @@ export default function CredentialsPage() {
                   type="text"
                   value={String((form as Record<string, unknown>)[key] ?? "")}
                   onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
                 />
               </label>
             ))}
@@ -111,7 +111,7 @@ export default function CredentialsPage() {
               <select
                 value={form.kind}
                 onChange={(event) => setForm((current) => ({ ...current, kind: event.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
               >
                 <option value="agent_token">agent_token</option>
                 <option value="bearer_token">bearer_token</option>
@@ -127,14 +127,14 @@ export default function CredentialsPage() {
                   onChange={(event) => setForm((current) => ({ ...current, secret_value: event.target.value }))}
                   rows={8}
                   spellCheck={false}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 font-mono text-sm outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 font-mono text-sm outline-none transition focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
                 />
               ) : (
                 <input
                   type="password"
                   value={form.secret_value}
                   onChange={(event) => setForm((current) => ({ ...current, secret_value: event.target.value }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
                 />
               )}
             </label>
@@ -144,11 +144,11 @@ export default function CredentialsPage() {
           </div>
         </form>
 
-        <div className="rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-panel backdrop-blur dark:border-white/10 dark:bg-slate-950/55">
+        <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
           <h3 className="text-xl font-semibold">Stored credentials</h3>
           <div className="mt-5 space-y-4">
             {credentials.map((credential) => (
-              <div key={credential.id} className="rounded-3xl bg-panel p-4 dark:bg-white/5">
+              <div key={credential.id} className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="font-semibold">{credential.name}</p>

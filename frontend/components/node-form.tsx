@@ -95,7 +95,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
           <input
             value={String((form as Record<string, unknown>)[key] ?? "")}
             onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
           />
         </label>
       ))}
@@ -105,7 +105,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
         <select
           value={form.health_check_type}
           onChange={(event) => setForm((current) => ({ ...current, health_check_type: event.target.value }))}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
         >
           <option value="ping">ping</option>
           <option value="http">http</option>
@@ -119,7 +119,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
         <select
           value={form.execution_mode}
           onChange={(event) => setForm((current) => ({ ...current, execution_mode: event.target.value }))}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
         >
           <option value="runner">runner</option>
           <option value="agent">agent</option>
@@ -131,7 +131,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
         <select
           value={form.credential_id}
           onChange={(event) => setForm((current) => ({ ...current, credential_id: event.target.value }))}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
         >
           <option value="">No credential</option>
           {credentials.map((credential) => (
@@ -147,7 +147,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
         <textarea
           value={form.context_text}
           onChange={(event) => setForm((current) => ({ ...current, context_text: event.target.value }))}
-          className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+          className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
           placeholder="raven-test: a simple nginx container running on localhost:6767"
         />
       </label>
@@ -157,7 +157,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
         <textarea
           value={form.approved_command_policy}
           onChange={(event) => setForm((current) => ({ ...current, approved_command_policy: event.target.value }))}
-          className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+          className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
           placeholder="Allow curl diagnostics and targeted service restarts only."
         />
       </label>
@@ -167,7 +167,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
         <textarea
           value={form.description}
           onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-          className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-white/10 dark:bg-white/5 dark:text-white"
+          className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
         />
       </label>
 
@@ -185,7 +185,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
         <button disabled={saving} className="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-ember disabled:opacity-60 dark:bg-ember">
           {saving ? "Saving..." : initial ? "Update Node" : "Create Node"}
         </button>
-        <button type="button" onClick={onCancel} className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 dark:border-white/15 dark:text-slate-200">
+        <button type="button" onClick={onCancel} className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:text-slate-200">
           Cancel
         </button>
       </div>
