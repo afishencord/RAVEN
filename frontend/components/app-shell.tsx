@@ -40,6 +40,7 @@ type Props = {
   subtitle?: string;
   user: User;
   children: ReactNode;
+  headerActions?: ReactNode;
   showHeaderControls?: boolean;
 };
 
@@ -52,7 +53,7 @@ function initials(name: string) {
     .join("");
 }
 
-export function AppShell({ title, subtitle, user, children, showHeaderControls = true }: Props) {
+export function AppShell({ title, subtitle, user, children, headerActions, showHeaderControls = true }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const navItems: NavItem[] = [
@@ -179,7 +180,9 @@ export function AppShell({ title, subtitle, user, children, showHeaderControls =
                 <h1 className="text-3xl font-bold tracking-tight text-[#111827] dark:text-white">{title}</h1>
                 {subtitle ? <p className="mt-2 text-sm text-[#64748B] dark:text-slate-400">{subtitle}</p> : null}
               </div>
-              {showHeaderControls ? (
+              {headerActions ? (
+                <div className="flex flex-wrap items-center gap-3">{headerActions}</div>
+              ) : showHeaderControls ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <select className="h-10 rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm font-medium text-[#111827] shadow-sm outline-none transition focus:border-[#7C3AED] dark:border-slate-800 dark:bg-[#050814] dark:text-slate-100">
                     <option>Last 24 hours</option>
