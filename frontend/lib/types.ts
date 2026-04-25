@@ -48,6 +48,13 @@ export type NodeRecord = {
   updated_at: string;
 };
 
+export type NodeGroupRecord = {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type MetricBreakdownItem = {
   label: string;
   value: number;

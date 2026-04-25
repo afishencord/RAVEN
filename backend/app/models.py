@@ -42,6 +42,13 @@ class RemediationProfile(TimestampMixin, Base):
     post_action_validation: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class NodeGroup(TimestampMixin, Base):
+    __tablename__ = "node_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+
+
 class Node(TimestampMixin, Base):
     __tablename__ = "nodes"
 
