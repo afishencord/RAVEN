@@ -62,6 +62,7 @@ class Node(TimestampMixin, Base):
     remediation_profile: Mapped[str] = mapped_column(String(64), default="command-executor", index=True)
     execution_mode: Mapped[str] = mapped_column(String(32), default="runner", index=True)
     execution_target: Mapped[str] = mapped_column(String(255))
+    group_name: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     context_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     approved_command_policy: Mapped[str | None] = mapped_column(Text, nullable=True)
     credential_id: Mapped[int | None] = mapped_column(ForeignKey("credentials.id"), nullable=True)

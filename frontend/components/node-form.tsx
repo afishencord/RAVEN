@@ -27,6 +27,7 @@ const defaultValues = {
   retry_count: "3",
   execution_mode: "runner",
   execution_target: "local:raven-backend",
+  group_name: "",
   context_text: "",
   approved_command_policy: "",
   credential_id: "",
@@ -48,6 +49,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
           health_check_path: initial.health_check_path ?? "",
           expected_response_contains: initial.expected_response_contains ?? "",
           url: initial.url ?? "",
+          group_name: initial.group_name ?? "",
           context_text: initial.context_text ?? "",
           approved_command_policy: initial.approved_command_policy ?? "",
           credential_id: initial.credential_id?.toString() ?? "",
@@ -68,6 +70,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
         timeout_seconds: Number(form.timeout_seconds),
         retry_count: Number(form.retry_count),
         credential_id: form.credential_id ? Number(form.credential_id) : null,
+        group_name: form.group_name.trim() || null,
       });
     } finally {
       setSaving(false);
@@ -89,6 +92,7 @@ export function NodeForm({ credentials, initial, onSubmit, onCancel }: Props) {
         ["Timeout Seconds", "timeout_seconds"],
         ["Retry Count", "retry_count"],
         ["Execution Target", "execution_target"],
+        ["Folder", "group_name"],
       ].map(([label, key]) => (
         <label key={key} className="text-sm text-slate-700 dark:text-slate-200">
           <span className="mb-2 block font-medium">{label}</span>

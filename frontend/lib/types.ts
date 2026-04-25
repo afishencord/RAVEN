@@ -36,6 +36,7 @@ export type NodeRecord = {
   retry_count: number;
   execution_mode: "runner" | "agent";
   execution_target: string;
+  group_name?: string | null;
   context_text?: string | null;
   approved_command_policy?: string | null;
   credential_id?: number | null;

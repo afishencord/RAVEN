@@ -73,6 +73,7 @@ class NodeBase(BaseModel):
     retry_count: int = 3
     execution_mode: str = "runner"
     execution_target: str
+    group_name: str | None = None
     context_text: str | None = None
     approved_command_policy: str | None = None
     credential_id: int | None = None
@@ -99,6 +100,7 @@ class NodeUpdate(BaseModel):
     retry_count: int | None = None
     execution_mode: str | None = None
     execution_target: str | None = None
+    group_name: str | None = None
     context_text: str | None = None
     approved_command_policy: str | None = None
     credential_id: int | None = None

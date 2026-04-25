@@ -24,6 +24,7 @@ def migrate_sqlite_schema() -> None:
         existing = {column["name"] for column in inspector.get_columns("nodes")}
         additions = {
             "execution_mode": "ALTER TABLE nodes ADD COLUMN execution_mode VARCHAR(32) DEFAULT 'runner'",
+            "group_name": "ALTER TABLE nodes ADD COLUMN group_name VARCHAR(128)",
             "context_text": "ALTER TABLE nodes ADD COLUMN context_text TEXT",
             "approved_command_policy": "ALTER TABLE nodes ADD COLUMN approved_command_policy TEXT",
             "credential_id": "ALTER TABLE nodes ADD COLUMN credential_id INTEGER",
