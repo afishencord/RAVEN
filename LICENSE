@@ -1,21 +1,102 @@
-MIT License
+RAVEN Source-Available Demo and Personal Use License
+Version 1.0
 
 Copyright (c) 2026 Andrew Fishencord
+All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Definitions
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+"Software" means the source code, object code, documentation, configuration files, scripts, assets, and any other materials included in this repository or distributed with this project.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+"Licensor" means the copyright holder of the Software.
+
+"User" means any individual or entity that accesses, downloads, installs, copies, runs, evaluates, or otherwise uses the Software.
+
+"Personal Use" means use by an individual for private, non-commercial purposes, including learning, experimentation, personal labs, and portfolio demonstration.
+
+"Demo Use" means limited use of the Software for evaluation, proof-of-concept, demonstration, testing, or educational purposes, provided such use is not deployed into a production environment or used to provide services to third parties.
+
+"Enterprise Use" means any use of the Software by or on behalf of a business, company, government agency, contractor, organization, institution, or other legal entity, including but not limited to production deployment, internal platform integration, security operations, infrastructure automation, managed services, customer-facing services, or integration into enterprise systems.
+
+2. Grant of Limited License
+
+Subject to the terms of this License, the Licensor grants the User a limited, revocable, non-exclusive, non-transferable license to download, install, run, and use the Software solely for Personal Use or Demo Use.
+
+No rights are granted except those expressly stated in this License.
+
+3. Enterprise License Requirement
+
+Enterprise Use of the Software is not permitted under this License.
+
+Any Enterprise Use requires a separate, written, paid enterprise license agreement with the Licensor prior to such use.
+
+This includes, but is not limited to:
+
+a. Use in production environments;
+b. Use by employees, contractors, or teams within an organization;
+c. Integration with enterprise infrastructure, monitoring platforms, ticketing systems, CI/CD pipelines, cloud environments, internal tools, or security systems;
+d. Use to support business operations, customers, clients, or third-party services;
+e. Modification, extension, or deployment of the Software for organizational benefit.
+
+4. Restrictions
+
+The User may not:
+
+a. Modify, adapt, translate, fork, or create derivative works of the Software for redistribution without prior written permission from the Licensor;
+
+b. Redistribute, sublicense, sell, lease, host, publish, or otherwise make the Software available to third parties under another name, brand, banner, product, company, or project identity;
+
+c. Remove, alter, obscure, or replace any copyright notices, license notices, trademarks, branding, author attribution, or proprietary notices included in the Software;
+
+d. Use the Software or any portion of it to create a competing product or service;
+
+e. Repackage or rebrand the Software as a separate product, platform, framework, or commercial offering;
+
+f. Claim ownership of the Software or any portion of its source code;
+
+g. Circumvent any licensing, authentication, access control, telemetry, or enterprise license enforcement mechanisms included in the Software.
+
+5. Source Code Ownership
+
+The Software is protected by copyright and other applicable intellectual property laws.
+
+The Licensor retains all right, title, and interest in and to the Software, including all source code, architecture, design, documentation, branding, trademarks, and related intellectual property.
+
+Access to the source code does not transfer ownership of the Software or grant any rights beyond those expressly provided in this License.
+
+6. Contributions
+
+Unless otherwise agreed in writing, any feedback, suggestions, bug reports, improvements, pull requests, patches, or other contributions submitted to the Licensor may be used, modified, incorporated, licensed, sublicensed, or distributed by the Licensor without restriction or compensation.
+
+By submitting a contribution, the contributor represents that they have the right to provide it and grants the Licensor a perpetual, worldwide, irrevocable, royalty-free license to use it in connection with the Software.
+
+7. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSOR DISCLAIMS ALL WARRANTIES, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, SECURITY, RELIABILITY, AVAILABILITY, AND ERROR-FREE OPERATION.
+
+8. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSOR SHALL NOT BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES ARISING FROM OR RELATED TO THE SOFTWARE, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA LOSS, SECURITY INCIDENTS, BUSINESS INTERRUPTION, SYSTEM FAILURE, OR UNAUTHORIZED ACCESS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+9. Termination
+
+This License automatically terminates if the User violates any term of this License.
+
+Upon termination, the User must immediately stop using the Software and delete all copies in their possession or control.
+
+Sections relating to ownership, restrictions, warranty disclaimers, limitation of liability, and enterprise license requirements survive termination.
+
+10. Reservation of Rights
+
+All rights not expressly granted under this License are reserved by the Licensor.
+
+Nothing in this License grants permission to use the Licensor’s name, trademarks, logos, branding, or product names except as necessary to identify the Software for permitted Demo Use or Personal Use.
+
+11. Contact for Enterprise Licensing
+
+For enterprise licensing, commercial use, production deployment, or integration rights, contact:
+
+Andrew Fishencord
+afishencord@gmail.com

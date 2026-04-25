@@ -2,6 +2,14 @@
 
 RAVEN is a semi-autonomous IT remediation dashboard for monitored application and infrastructure nodes. It records health checks, opens incidents when checks fail, generates AI-assisted remediation guidance, and routes approved commands through a separate runner process. The UI is designed as a production-style SaaS dashboard with a live, chat-like Message Center workflow.
 
+## License
+
+This project is source-available for demo and personal use only.
+
+Enterprise use, production deployment, business integration, redistribution, rebranding, or commercial use requires a separate paid enterprise license.
+
+See the [LICENSE](./LICENSE) file for full terms.
+
 ## Stack
 
 - Frontend: Next.js App Router, React, Tailwind CSS
