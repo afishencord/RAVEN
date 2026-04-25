@@ -103,7 +103,7 @@ export default function CredentialsPage() {
     >
       {error ? <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
 
-      <section className="min-h-[calc(100vh-14rem)] rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
+      <section className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-xl font-semibold">Stored credentials</h3>
           <span className="rounded-full bg-panel px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-[#0B1020] dark:text-slate-300">
@@ -111,53 +111,53 @@ export default function CredentialsPage() {
           </span>
         </div>
 
-        <div className="mt-5 space-y-3">
-          {credentials.map((credential) => (
-            <article
-              key={credential.id}
-              className="flex flex-col gap-4 rounded-[1.5rem] border border-slate-200 bg-panel px-5 py-4 dark:border-slate-800 dark:bg-[#0B1020] lg:flex-row lg:items-center"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="truncate text-base font-semibold text-ink dark:text-white">{credential.name}</p>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:bg-[#050814] dark:text-slate-300">
-                    {credential.kind}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{credential.description ?? "No description"}</p>
-              </div>
-
-              <div className="grid gap-3 text-sm text-slate-600 dark:text-slate-300 sm:grid-cols-3 lg:w-[560px]">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Username</p>
-                  <p className="mt-1 truncate font-medium">{credential.username ?? "Not set"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Secret</p>
-                  <p className="mt-1 truncate font-mono text-xs">{credential.masked_secret}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Updated</p>
-                  <p className="mt-1 font-medium">{new Date(credential.updated_at).toLocaleDateString()}</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                aria-label={`Delete ${credential.name}`}
-                title={`Delete ${credential.name}`}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-rose-500 hover:text-rose-600 dark:border-slate-800 dark:bg-[#050814] dark:text-slate-300 dark:hover:border-rose-800 dark:hover:text-rose-300"
-                onClick={() => deleteCredential(credential.id)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </article>
-          ))}
-          {!credentials.length ? (
-            <div className="rounded-[1.5rem] border border-dashed border-slate-300 px-5 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-              No credentials stored yet.
-            </div>
-          ) : null}
+        <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200 dark:border-slate-800">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-panel dark:bg-[#0B1020]">
+              <tr className="text-left text-slate-500 dark:text-slate-300">
+                <th className="px-4 py-3 font-medium">Credential</th>
+                <th className="px-4 py-3 font-medium">Type</th>
+                <th className="px-4 py-3 font-medium">Username</th>
+                <th className="px-4 py-3 font-medium">Secret</th>
+                <th className="px-4 py-3 font-medium">Updated</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-[#050814]">
+              {credentials.map((credential) => (
+                <tr key={credential.id} className="bg-slate-50 dark:bg-[#0B1020]">
+                  <td className="px-4 py-4">
+                    <p className="font-semibold text-ink dark:text-white">{credential.name}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{credential.description ?? "No description"}</p>
+                  </td>
+                  <td className="px-4 py-4 text-slate-600 dark:text-slate-300">
+                    <p className="font-medium">{credential.kind}</p>
+                  </td>
+                  <td className="px-4 py-4 text-slate-600 dark:text-slate-300">{credential.username ?? "Not set"}</td>
+                  <td className="px-4 py-4 font-mono text-xs text-slate-600 dark:text-slate-300">{credential.masked_secret}</td>
+                  <td className="px-4 py-4 text-slate-600 dark:text-slate-300">{new Date(credential.updated_at).toLocaleString()}</td>
+                  <td className="px-4 py-4">
+                    <button
+                      type="button"
+                      aria-label={`Delete ${credential.name}`}
+                      title={`Delete ${credential.name}`}
+                      className="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-rose-500 hover:text-rose-600 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-300 dark:hover:border-rose-800 dark:hover:text-rose-300"
+                      onClick={() => deleteCredential(credential.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!credentials.length ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                    No credentials stored yet.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -195,7 +195,7 @@ export default function CredentialsPage() {
                 </label>
               ))}
               <label className="text-sm text-slate-700 dark:text-slate-200">
-                <span className="mb-2 block font-medium">Kind</span>
+                <span className="mb-2 block font-medium">Type</span>
                 <select
                   value={form.kind}
                   onChange={(event) => setForm((current) => ({ ...current, kind: event.target.value }))}
