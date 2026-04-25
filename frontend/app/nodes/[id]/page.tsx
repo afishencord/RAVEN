@@ -54,8 +54,8 @@ export default function NodeDetailPage() {
       title={detail ? detail.node.name : "Node detail"}
       subtitle="Inspect health history, incident context, command recommendations, and execution timeline for a single node."
     >
-      <Link href="/" className="inline-flex rounded-full bg-panel px-4 py-2 text-sm font-medium text-slate-700 dark:bg-[#0B1020] dark:text-slate-200">
-        Back to dashboard
+      <Link href="/infrastructure" className="inline-flex rounded-full bg-panel px-4 py-2 text-sm font-medium text-slate-700 dark:bg-[#0B1020] dark:text-slate-200">
+        Back to infrastructure
       </Link>
       <p className="mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
         Live updates enabled{lastSynced ? ` | Synced ${new Date(lastSynced).toLocaleTimeString()}` : ""}

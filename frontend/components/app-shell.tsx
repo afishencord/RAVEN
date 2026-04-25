@@ -61,7 +61,7 @@ export function AppShell({ title, subtitle, user, children }: Props) {
     { href: "#validations", label: "Validations", icon: ShieldCheck, disabled: true },
     { href: "#remediations", label: "Remediations", icon: Zap, disabled: true },
     { href: "#automations", label: "Automations", icon: Bot, disabled: true },
-    { href: "#infrastructure", label: "Infrastructure", icon: Server, disabled: true },
+    { href: "/infrastructure", label: "Infrastructure", icon: Server },
     { href: "#integrations", label: "Integrations", icon: Network, disabled: true },
     { href: "#reports", label: "Reports", icon: BarChart3, disabled: true },
     { href: "#settings", label: "Settings", icon: Settings, disabled: true },

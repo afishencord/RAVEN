@@ -47,6 +47,32 @@ export type NodeRecord = {
   updated_at: string;
 };
 
+export type MetricBreakdownItem = {
+  label: string;
+  value: number;
+};
+
+export type TimeSeriesPoint = {
+  date: string;
+  value: number;
+};
+
+export type DashboardMetrics = {
+  total_nodes: number;
+  enabled_nodes: number;
+  active_incidents: number;
+  resolved_incidents: number;
+  successful_remediations: number;
+  average_resolution_minutes: number | null;
+  node_state_counts: MetricBreakdownItem[];
+  execution_status_counts: MetricBreakdownItem[];
+  approval_decision_counts: MetricBreakdownItem[];
+  execution_mode_counts: MetricBreakdownItem[];
+  environment_counts: MetricBreakdownItem[];
+  failure_type_counts: MetricBreakdownItem[];
+  successful_remediations_over_time: TimeSeriesPoint[];
+};
+
 export type HealthCheck = {
   id: number;
   status: string;

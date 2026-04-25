@@ -116,6 +116,32 @@ class NodeRead(NodeBase):
     updated_at: datetime
 
 
+class MetricBreakdownItem(BaseModel):
+    label: str
+    value: int
+
+
+class TimeSeriesPoint(BaseModel):
+    date: str
+    value: int
+
+
+class DashboardMetricsRead(BaseModel):
+    total_nodes: int
+    enabled_nodes: int
+    active_incidents: int
+    resolved_incidents: int
+    successful_remediations: int
+    average_resolution_minutes: float | None
+    node_state_counts: list[MetricBreakdownItem]
+    execution_status_counts: list[MetricBreakdownItem]
+    approval_decision_counts: list[MetricBreakdownItem]
+    execution_mode_counts: list[MetricBreakdownItem]
+    environment_counts: list[MetricBreakdownItem]
+    failure_type_counts: list[MetricBreakdownItem]
+    successful_remediations_over_time: list[TimeSeriesPoint]
+
+
 class HealthCheckRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

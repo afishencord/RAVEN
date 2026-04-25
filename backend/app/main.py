@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import audit, auth, credentials, incidents, messages, nodes, profiles
+from app.api import audit, auth, credentials, dashboard, incidents, messages, nodes, profiles
 from app.config import get_settings
 from app.database import Base, engine, SessionLocal, migrate_sqlite_schema
 from app.seed import seed_data
@@ -38,6 +38,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(nodes.router, prefix=settings.api_prefix)
+app.include_router(dashboard.router, prefix=settings.api_prefix)
 app.include_router(incidents.router, prefix=settings.api_prefix)
 app.include_router(messages.router, prefix=settings.api_prefix)
 app.include_router(profiles.router, prefix=settings.api_prefix)
