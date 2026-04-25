@@ -1,66 +1,79 @@
 # RAVEN
 
-RAVEN is an MVP semi-autonomous IT remediation platform for web application nodes. It monitors nodes, records health checks and incidents, generates AI-assisted remediation recommendations from an approved catalog, presents those recommendations in an internal message center, and queues only human-approved remediations for execution through a separate secure runner.
+RAVEN is a semi-autonomous IT remediation dashboard for monitored application and infrastructure nodes. It records health checks, opens incidents when checks fail, generates AI-assisted remediation guidance, and routes approved commands through a separate runner process. The UI is designed as a production-style SaaS dashboard with a live, chat-like Message Center workflow.
 
 ## Stack
 
-- Frontend: Next.js App Router + Tailwind CSS
-- Backend: FastAPI + SQLAlchemy
-- Database: SQLite for MVP
+- Frontend: Next.js App Router, React, Tailwind CSS
+- Backend: FastAPI, SQLAlchemy, Pydantic
+- Database: SQLite for the MVP, stored in a shared Docker volume
 - AI: OpenAI Responses API via `OPENAI_API_KEY`
 - Background work:
-  - Embedded monitoring loop inside the FastAPI app
-  - Separate runner daemon for approved remediations
+  - Embedded monitoring loop in the backend container
+  - Separate runner container for approved command execution
 
-## Project structure
+## Project Structure
 
 ```text
 backend/
   app/
-    api/                  FastAPI routes
-    services/             monitoring, AI, execution, health-check logic
-    main.py               app entrypoint
+    api/                  FastAPI routers
+    services/             monitoring, incident workflow, AI, runner, health checks
+    models.py             SQLAlchemy models
+    schemas.py            Pydantic request/response schemas
+    database.py           database setup and lightweight SQLite migrations
+    seed.py               seeded users, nodes, profiles, and cleanup
+    main.py               FastAPI entrypoint
 frontend/
-  app/                    Next.js pages
-  components/             UI building blocks
-  lib/                    API client and shared types
+  app/                    Next.js routes
+  components/             shared UI components
+  lib/                    API client, shared types, live-refresh hook
+  public/brand/           RAVEN brand images
+docker-compose.yml        backend, runner, and frontend deployment
 ```
 
-## MVP capabilities
+## Current Capabilities
 
-- Dashboard for node CRUD, enable/disable, and status filtering
-- Node detail page with:
-  - health check history
-  - incident history
-  - AI recommendation history
-  - execution history
-  - assigned remediation profile
-- Internal message center with:
-  - acknowledge
-  - add note
-  - refresh recommendation
-  - approve remediation
-  - reject remediation
-  - rerun health check
-- Secure execution queue with allowlisted actions only
-- Remediation profiles with cooldowns and approved targets
-- JWT auth with `viewer`, `operator`, and `admin`
-- Audit log and approval decision exposure
+- Full-screen enterprise dashboard with dark sidebar, light workspace, and dark mode
+- JWT authentication with `viewer`, `operator`, and `admin` roles
+- Dashboard node CRUD, enable/disable, status filtering, and live status updates
+- Node detail view with live health check, incident, recommendation, and execution history
+- Admin-only credential management
+- Message Center with:
+  - live active and archived incident conversations
+  - chat-style remediation timeline
+  - minimized conversations by default, except the newest active incident
+  - archive and restore support
+  - operator notes
+  - health re-checks
+  - AI recommendation turns
+  - human approve/reject flow for command cards
+  - command output rendered inline in the thread
+  - `Close incident` and `Investigate further` cards after healthy validation
+- Iterative AI remediation:
+  - initial recommendation is generated when an incident is created
+  - follow-up recommendations use raw command output and health-check results as context
+  - follow-up responses are intentionally short
+  - each AI turn produces three command cards
+  - new proposal IDs are generated to avoid repeating prior command cards
+- Separate runner process for queued command execution
+- Audit logs and approval decision records
 
-## Security model
+## Security Model
 
-The MVP intentionally keeps AI out of the execution path:
+RAVEN keeps AI out of the direct execution path:
 
-- The AI can only recommend `action_key` values from the predefined remediation catalog.
-- The frontend never executes shell commands directly.
-- Operators/Admins approve actions through the API.
-- Approved actions are written to `execution_tasks`.
-- A separate runner process polls the queue and executes only allowlisted actions tied to a remediation profile.
-- Each execution is logged with command preview, exit code, output, and post-action validation.
+- AI can propose command cards, but it cannot execute them.
+- Operators/Admins must explicitly approve a command card.
+- Approved commands are written to `execution_tasks`.
+- The `raven-runner` container polls queued tasks and performs execution.
+- Frontend code never executes shell commands.
+- Command execution records include command preview, exit code, output, and post-action validation.
+- OpenAI calls are limited to incident recommendation generation and user/operator-prompted follow-up workflows.
 
-`backend/app/services/remediation_catalog.py` is the main allowlist boundary. Keep new actions constrained and reviewable.
+The runner currently treats exit codes `0` and `3` as successful command completions. Post-action validation still determines whether the incident appears resolved.
 
-## Seeded credentials
+## Seeded Users
 
 - `admin / admin123!`
 - `operator / operator123!`
@@ -68,17 +81,64 @@ The MVP intentionally keeps AI out of the execution path:
 
 Change these before any shared or persistent deployment.
 
-## Local setup
+## Environment
 
-### 1. Configure environment
+Create a local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Set `OPENAI_API_KEY` if you want live AI recommendations. Without it, RAVEN falls back to deterministic catalog-based recommendations so the workflow remains usable.
+Important values:
 
-### 2. Start the backend
+- `OPENAI_API_KEY`: enables live AI recommendations. If unset, RAVEN uses deterministic fallback recommendations.
+- `OPENAI_MODEL`: model used by the recommendation service.
+- `FRONTEND_ORIGIN`: keep as `http://localhost:3000` for Docker Compose.
+
+Docker Compose overrides `DATABASE_URL` to `sqlite:////data/raven.db` so backend and runner share state through the `raven-data` volume.
+
+## Docker Compose Deployment
+
+The intended local deployment path is Docker Compose.
+
+```bash
+docker compose up --build -d --remove-orphans
+```
+
+Services:
+
+- `raven-backend`: FastAPI API plus embedded monitoring loop
+- `raven-runner`: approved command execution daemon
+- `raven-frontend`: Next.js UI
+
+Open:
+
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:8000`
+
+Check status:
+
+```bash
+docker compose ps
+docker compose exec -T backend curl -fsS http://localhost:8000/api/health
+docker compose exec -T backend curl -fsSI http://frontend:3000/messages
+```
+
+Stop:
+
+```bash
+docker compose down
+```
+
+Remove persisted SQLite data too:
+
+```bash
+docker compose down -v
+```
+
+## Local Non-Docker Development
+
+Backend:
 
 ```bash
 cd backend
@@ -88,15 +148,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-This starts:
-
-- the FastAPI API on `http://localhost:8000`
-- the embedded monitoring loop
-- database creation and seed data on first boot
-
-### 3. Start the secure runner
-
-Run the runner in a second shell so approved executions can leave the queue:
+Runner in a second shell:
 
 ```bash
 cd backend
@@ -104,7 +156,7 @@ source .venv/bin/activate
 python -m app.services.execution_runner
 ```
 
-### 4. Start the frontend
+Frontend:
 
 ```bash
 cd frontend
@@ -112,50 +164,28 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+## Validation Workflow
 
-## Docker Compose
-
-RAVEN can run as three containers:
-
-- `backend`: FastAPI API plus embedded monitoring loop
-- `runner`: secure execution runner polling approved remediation tasks
-- `frontend`: Next.js UI
-
-The backend and runner share a named Docker volume for the SQLite database so they operate on the same state.
-
-### 1. Configure environment
+Recommended checks before considering changes complete:
 
 ```bash
-cp .env.example .env
+cd frontend
+npm exec tsc -- --noEmit --incremental false
+npm run build
 ```
-
-For Docker Compose, keep `FRONTEND_ORIGIN=http://localhost:3000`. The compose file overrides `DATABASE_URL` to `sqlite:////data/raven.db` so the database lives in a shared container volume.
-
-### 2. Start the stack
 
 ```bash
-docker compose up --build
+cd /path/to/RAVEN
+python -m compileall backend/app
+docker compose up --build -d --remove-orphans
+docker compose ps
+docker compose exec -T backend curl -fsS http://localhost:8000/api/health
+docker compose exec -T backend curl -fsSI http://frontend:3000/messages
 ```
 
-Open:
+If `npm run build` fails in a sandbox with an `EPERM` copyfile error under `.next`, rerun outside the sandbox. The app can still compile successfully before that sandbox-specific copy step fails.
 
-- Frontend: `http://localhost:3000`
-- Backend API: `http://localhost:8000`
-
-### 3. Stop the stack
-
-```bash
-docker compose down
-```
-
-To remove the persisted SQLite data volume too:
-
-```bash
-docker compose down -v
-```
-
-## API highlights
+## API Highlights
 
 - `POST /api/auth/login`
 - `GET /api/auth/me`
@@ -164,24 +194,37 @@ docker compose down -v
 - `GET /api/nodes/{id}/detail`
 - `POST /api/nodes/{id}/rerun-check`
 - `GET /api/messages`
+- `GET /api/messages?archived=true`
 - `POST /api/incidents/{id}/acknowledge`
+- `POST /api/incidents/{id}/archive`
+- `POST /api/incidents/{id}/unarchive`
+- `POST /api/incidents/{id}/close`
+- `POST /api/incidents/{id}/investigate-further`
 - `POST /api/incidents/{id}/notes`
 - `POST /api/incidents/{id}/recommendation/refresh`
 - `POST /api/incidents/{id}/approve`
 - `POST /api/incidents/{id}/reject`
 - `GET /api/profiles`
+- `GET /api/credentials`
 - `GET /api/audit/logs`
 - `GET /api/audit/approvals`
 
-## Example remediation profiles
+## Message Center Workflow
 
-- `webapp-basic`
-- `api-basic`
-- `host-basic`
+1. Monitoring detects repeated health-check failures.
+2. Backend creates an incident and internal alert message.
+3. AI generates the initial summary and three command cards using node context and failure details.
+4. Operator approves or rejects one proposed command.
+5. Runner executes approved commands and records output.
+6. Backend performs post-action validation.
+7. If validation is still unhealthy, AI generates a new short follow-up using raw command output.
+8. If validation is healthy, UI shows:
+   - `Close incident`: marks resolved and archives the conversation.
+   - `Investigate further`: keeps the thread active and starts root-cause analysis.
 
-These are seeded automatically and can be extended in `backend/app/seed.py`.
+Archived conversations remain available from the Archived tab.
 
-## Execution target conventions
+## Execution Target Conventions
 
 The runner supports transport-aware targets:
 
@@ -191,20 +234,16 @@ The runner supports transport-aware targets:
 
 Examples:
 
-- `local:raven-web.service`
+- `local:raven-backend`
 - `ssh:ops@app01:raven-web.service`
 - `api:https://runner.example.internal:raven-api`
 
-For the seeded MVP data, targets use `local:*`.
+The seeded MVP data uses `local:raven-backend`.
 
-## Notes for extending later
+## Current Limitations
 
-- Slack/webhook support can attach to the `alert_messages` model without changing incident creation.
-- SQLite models were kept relational and portable for a PostgreSQL migration later.
-- The runner abstraction already separates local, SSH, and API dispatch modes.
-
-## Current limitations
-
-- The monitoring loop is in-process for MVP simplicity. Production deployment should move it to a dedicated worker.
-- The secure runner container can execute allowlisted commands available inside its own container, or call SSH/API targets. If you want it to manage host services or host Docker directly, that requires an explicit host-integration design beyond this MVP compose setup.
-- The frontend is intentionally client-side heavy to keep the prototype fast to iterate on.
+- SQLite is used for MVP simplicity. PostgreSQL is the likely production migration path.
+- The monitoring loop currently runs inside the backend process.
+- The runner executes commands available inside its own container or through SSH/API targets.
+- Managing host Docker or host services from the runner requires explicit host integration.
+- AI command proposals should still be reviewed carefully before approval.
