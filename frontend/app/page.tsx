@@ -229,7 +229,6 @@ export default function DashboardPage() {
     <AppShell
       user={user}
       title="Dashboard"
-      subtitle="Operational analytics for remediation, automation, and monitored infrastructure"
     >
       <div className="space-y-6">
         <div className="flex flex-col gap-2 rounded-[1.5rem] border border-[#E5E7EB] bg-white px-5 py-4 text-sm text-slate-600 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:text-slate-300 dark:shadow-none md:flex-row md:items-center md:justify-between">

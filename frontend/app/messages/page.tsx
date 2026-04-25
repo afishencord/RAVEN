@@ -290,7 +290,6 @@ export default function MessagesPage() {
     <AppShell
       user={user}
       title="Internal message center"
-      subtitle="Work incidents as a live remediation dialogue with AI recommendations, approved commands, and execution output."
     >
       {error ? <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
 

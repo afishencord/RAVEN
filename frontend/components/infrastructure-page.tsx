@@ -369,7 +369,6 @@ export function InfrastructurePage() {
     <AppShell
       user={user}
       title="Infrastructure"
-      subtitle="Monitored nodes, execution routes, and fleet configuration"
       showHeaderControls={false}
     >
       <div className="space-y-6">
