@@ -42,11 +42,13 @@ docker-compose.yml        backend, runner, and frontend deployment
 
 ## Current Capabilities
 
-- Full-screen enterprise dashboard with dark sidebar, light workspace, and dark mode
+- Full-screen enterprise dashboard with collapsible dark sidebar, light workspace, and dark mode
 - JWT authentication with `viewer`, `operator`, and `admin` roles
-- Dashboard node CRUD, enable/disable, status filtering, and live status updates
+- Analytics dashboard with node-state, remediation, execution, environment, approval, and failure visualizations
+- Infrastructure workspace with tabbed Nodes and Fleet views
+- Node CRUD, enable/disable, status filtering, drag-and-drop grouping, and live status updates
 - Node detail view with live health check, incident, recommendation, and execution history
-- Admin-only credential management
+- Admin-only credential management with a full-width table layout
 - Message Center with:
   - live active and archived incident conversations
   - chat-style remediation timeline
@@ -201,6 +203,10 @@ If `npm run build` fails in a sandbox with an `EPERM` copyfile error under `.nex
 - `GET|PUT|DELETE /api/nodes/{id}`
 - `GET /api/nodes/{id}/detail`
 - `POST /api/nodes/{id}/rerun-check`
+- `GET /api/node-groups`
+- `POST /api/node-groups`
+- `DELETE /api/node-groups/{id}`
+- `GET /api/dashboard/metrics`
 - `GET /api/messages`
 - `GET /api/messages?archived=true`
 - `POST /api/incidents/{id}/acknowledge`
