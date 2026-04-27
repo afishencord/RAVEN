@@ -49,6 +49,9 @@ docker-compose.yml        backend, runner, and frontend deployment
 - Node CRUD, enable/disable, status filtering, drag-and-drop grouping, and live status updates
 - Node detail view with live health check, incident, recommendation, and execution history
 - Admin-only credential management with a full-width table layout
+- Alerts page (work in progress, frontend wired) with a unified notification table and date/category filters
+- Reports page (work in progress, frontend wired) with report previews and CSV/JSON export
+- Settings page (work in progress, frontend wired) for model, API key override, LDAP/SSO, organization, notification, retention, and execution settings
 - Message Center with:
   - live active and archived incident conversations
   - chat-style remediation timeline
@@ -207,6 +210,8 @@ If `npm run build` fails in a sandbox with an `EPERM` copyfile error under `.nex
 - `POST /api/node-groups`
 - `DELETE /api/node-groups/{id}`
 - `GET /api/dashboard/metrics`
+- `GET /api/audit/logs`
+- `GET /api/audit/approvals`
 - `GET /api/messages`
 - `GET /api/messages?archived=true`
 - `POST /api/incidents/{id}/acknowledge`
@@ -220,8 +225,6 @@ If `npm run build` fails in a sandbox with an `EPERM` copyfile error under `.nex
 - `POST /api/incidents/{id}/reject`
 - `GET /api/profiles`
 - `GET /api/credentials`
-- `GET /api/audit/logs`
-- `GET /api/audit/approvals`
 
 ## Message Center Workflow
 

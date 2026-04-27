@@ -8,21 +8,35 @@ import { AppShell } from "@/components/app-shell";
 import { requireSession } from "@/lib/api";
 import { User } from "@/lib/types";
 
-const modelOptions = [
-  "gpt-5.2",
-  "gpt-5.2-mini",
-  "gpt-5.1",
-  "gpt-4.1",
+const modelProviders = [
+  { value: "env_default", label: "Use default model from environment" },
+  { value: "openai", label: "OpenAI" },
+  { value: "anthropic", label: "Claude / Anthropic" },
+  { value: "self_hosted", label: "Self-hosted LLM" },
+  { value: "custom", label: "Custom provider" },
 ];
 
-const authModes = ["Local", "LDAP", "SAML SSO", "OIDC SSO"];
+const customModelOptions = [
+  "gpt-5.2",
+  "gpt-5.2-mini",
+  "claude-3-5-sonnet",
+  "llama-3.1-70b",
+  "mistral-large",
+  "custom-model",
+];
+
 const approvalModes = ["Operator approval required", "Admin approval required", "Two-person approval"];
+const integrationRows = ["ServiceNow", "Slack", "Mattermost", "Microsoft Teams"];
 
 const defaultSettings = {
   organizationName: "Acme Corporation",
-  defaultModel: "gpt-5.2",
+  modelProvider: "env_default",
+  customModel: "gpt-5.2",
+  modelEndpoint: "",
   apiKeyOverride: "",
-  authMode: "Local",
+  localAuthEnabled: true,
+  ldapEnabled: false,
+  ssoEnabled: false,
   ldapUrl: "",
   ldapBaseDn: "",
   ssoIssuer: "",
@@ -48,9 +62,9 @@ function FieldShell({ label, children }: { label: string; children: ReactNode })
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
+    <section className="border-b border-slate-200 px-6 py-6 last:border-b-0 dark:border-slate-800">
       <h3 className="text-xl font-semibold">{title}</h3>
       <div className="mt-5 grid gap-4">{children}</div>
     </section>
@@ -70,6 +84,14 @@ function ToggleRow({ label, checked, disabled, onChange }: { label: string; chec
       />
     </label>
   );
+}
+
+function inputClass() {
+  return "h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100";
+}
+
+function selectClass() {
+  return "h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm font-medium text-[#111827] outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100";
 }
 
 export default function SettingsPage() {
@@ -95,6 +117,7 @@ export default function SettingsPage() {
   }
 
   const canEdit = user.role === "admin";
+  const usingEnvironmentModel = settings.modelProvider === "env_default";
 
   return (
     <AppShell
@@ -121,154 +144,196 @@ export default function SettingsPage() {
           <span>{savedAt ? `Saved ${new Date(savedAt).toLocaleString()}` : "No changes saved in this session"}</span>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Section title="AI Model">
-            <FieldShell label="Default model">
-              <select
-                value={settings.defaultModel}
-                disabled={!canEdit}
-                onChange={(event) => setSettings((current) => ({ ...current, defaultModel: event.target.value }))}
-                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm font-medium text-[#111827] outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
-              >
-                {modelOptions.map((model) => (
-                  <option key={model} value={model}>{model}</option>
-                ))}
-              </select>
-            </FieldShell>
-            <FieldShell label="API key override">
-              <input
-                type="password"
-                value={settings.apiKeyOverride}
-                disabled={!canEdit}
-                onChange={(event) => setSettings((current) => ({ ...current, apiKeyOverride: event.target.value }))}
-                placeholder="Use environment default"
-                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
-              />
-            </FieldShell>
+        <section className="overflow-hidden rounded-[2rem] border border-[#E5E7EB] bg-white shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
+          <SettingsSection title="AI Model">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FieldShell label="Configure custom model">
+                <select
+                  value={settings.modelProvider}
+                  disabled={!canEdit}
+                  onChange={(event) => setSettings((current) => ({ ...current, modelProvider: event.target.value }))}
+                  className={selectClass()}
+                >
+                  {modelProviders.map((provider) => (
+                    <option key={provider.value} value={provider.value}>{provider.label}</option>
+                  ))}
+                </select>
+              </FieldShell>
+              <FieldShell label="Model">
+                <select
+                  value={settings.customModel}
+                  disabled={!canEdit || usingEnvironmentModel}
+                  onChange={(event) => setSettings((current) => ({ ...current, customModel: event.target.value }))}
+                  className={selectClass()}
+                >
+                  {customModelOptions.map((model) => (
+                    <option key={model} value={model}>{model}</option>
+                  ))}
+                </select>
+              </FieldShell>
+              <FieldShell label="Model endpoint">
+                <input
+                  type="url"
+                  value={settings.modelEndpoint}
+                  disabled={!canEdit || usingEnvironmentModel}
+                  onChange={(event) => setSettings((current) => ({ ...current, modelEndpoint: event.target.value }))}
+                  placeholder={usingEnvironmentModel ? "Using environment configuration" : "https://llm.example.internal/v1"}
+                  className={inputClass()}
+                />
+              </FieldShell>
+              <FieldShell label="API key override">
+                <input
+                  type="password"
+                  value={settings.apiKeyOverride}
+                  disabled={!canEdit || usingEnvironmentModel}
+                  onChange={(event) => setSettings((current) => ({ ...current, apiKeyOverride: event.target.value }))}
+                  placeholder={usingEnvironmentModel ? "Using environment API key" : "Override provider key"}
+                  className={inputClass()}
+                />
+              </FieldShell>
+            </div>
             <ToggleRow
               label="Require post-remediation validation"
               checked={settings.requirePostValidation}
               disabled={!canEdit}
               onChange={(checked) => setSettings((current) => ({ ...current, requirePostValidation: checked }))}
             />
-          </Section>
+          </SettingsSection>
 
-          <Section title="Organization">
-            <FieldShell label="Organization name">
-              <input
-                type="text"
-                value={settings.organizationName}
-                disabled={!canEdit}
-                onChange={(event) => setSettings((current) => ({ ...current, organizationName: event.target.value }))}
-                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
-              />
-            </FieldShell>
-            <FieldShell label="Maintenance window">
-              <input
-                type="text"
-                value={settings.maintenanceWindow}
-                disabled={!canEdit}
-                onChange={(event) => setSettings((current) => ({ ...current, maintenanceWindow: event.target.value }))}
-                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
-              />
-            </FieldShell>
+          <SettingsSection title="Organization">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FieldShell label="Organization name">
+                <input
+                  type="text"
+                  value={settings.organizationName}
+                  disabled={!canEdit}
+                  onChange={(event) => setSettings((current) => ({ ...current, organizationName: event.target.value }))}
+                  className={inputClass()}
+                />
+              </FieldShell>
+              <FieldShell label="Maintenance window">
+                <input
+                  type="text"
+                  value={settings.maintenanceWindow}
+                  disabled={!canEdit}
+                  onChange={(event) => setSettings((current) => ({ ...current, maintenanceWindow: event.target.value }))}
+                  className={inputClass()}
+                />
+              </FieldShell>
+            </div>
             <FieldShell label="License warning notifications">
               <select
                 value={settings.notifyOnLicenseWarning ? "enabled" : "disabled"}
                 disabled={!canEdit}
                 onChange={(event) => setSettings((current) => ({ ...current, notifyOnLicenseWarning: event.target.value === "enabled" }))}
-                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm font-medium text-[#111827] outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
+                className={selectClass()}
               >
                 <option value="enabled">Enabled</option>
                 <option value="disabled">Disabled</option>
               </select>
             </FieldShell>
-          </Section>
+          </SettingsSection>
 
-          <Section title="Authentication">
-            <FieldShell label="Authentication mode">
-              <select
-                value={settings.authMode}
-                disabled={!canEdit}
-                onChange={(event) => setSettings((current) => ({ ...current, authMode: event.target.value }))}
-                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm font-medium text-[#111827] outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
-              >
-                {authModes.map((mode) => (
-                  <option key={mode} value={mode}>{mode}</option>
-                ))}
-              </select>
-            </FieldShell>
-            <div className="grid gap-4 md:grid-cols-2">
-              <FieldShell label="LDAP URL">
-                <input
-                  type="url"
-                  value={settings.ldapUrl}
+          <SettingsSection title="Authentication">
+            <div className="grid gap-4">
+              <div className="rounded-[1.5rem] bg-panel p-4 dark:bg-[#0B1020]">
+                <ToggleRow
+                  label="Local authentication"
+                  checked={settings.localAuthEnabled}
                   disabled={!canEdit}
-                  onChange={(event) => setSettings((current) => ({ ...current, ldapUrl: event.target.value }))}
-                  className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
+                  onChange={(checked) => setSettings((current) => ({ ...current, localAuthEnabled: checked }))}
+                />
+              </div>
+              <div className="rounded-[1.5rem] bg-panel p-4 dark:bg-[#0B1020]">
+                <ToggleRow
+                  label="LDAP authentication"
+                  checked={settings.ldapEnabled}
+                  disabled={!canEdit}
+                  onChange={(checked) => setSettings((current) => ({ ...current, ldapEnabled: checked }))}
+                />
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <FieldShell label="LDAP URL">
+                    <input
+                      type="url"
+                      value={settings.ldapUrl}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapUrl: event.target.value }))}
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="LDAP base DN">
+                    <input
+                      type="text"
+                      value={settings.ldapBaseDn}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapBaseDn: event.target.value }))}
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                </div>
+              </div>
+              <div className="rounded-[1.5rem] bg-panel p-4 dark:bg-[#0B1020]">
+                <ToggleRow
+                  label="SSO authentication"
+                  checked={settings.ssoEnabled}
+                  disabled={!canEdit}
+                  onChange={(checked) => setSettings((current) => ({ ...current, ssoEnabled: checked }))}
+                />
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <FieldShell label="SSO issuer">
+                    <input
+                      type="url"
+                      value={settings.ssoIssuer}
+                      disabled={!canEdit || !settings.ssoEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ssoIssuer: event.target.value }))}
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="SSO client ID">
+                    <input
+                      type="text"
+                      value={settings.ssoClientId}
+                      disabled={!canEdit || !settings.ssoEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ssoClientId: event.target.value }))}
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                </div>
+              </div>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title="Notifications">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FieldShell label="Alert email">
+                <input
+                  type="email"
+                  value={settings.alertEmail}
+                  disabled={!canEdit}
+                  onChange={(event) => setSettings((current) => ({ ...current, alertEmail: event.target.value }))}
+                  className={inputClass()}
                 />
               </FieldShell>
-              <FieldShell label="LDAP base DN">
+              <FieldShell label="Webhook URL">
                 <input
-                  type="text"
-                  value={settings.ldapBaseDn}
+                  type="url"
+                  value={settings.webhookUrl}
                   disabled={!canEdit}
-                  onChange={(event) => setSettings((current) => ({ ...current, ldapBaseDn: event.target.value }))}
-                  className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
+                  onChange={(event) => setSettings((current) => ({ ...current, webhookUrl: event.target.value }))}
+                  className={inputClass()}
                 />
               </FieldShell>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <FieldShell label="SSO issuer">
-                <input
-                  type="url"
-                  value={settings.ssoIssuer}
-                  disabled={!canEdit}
-                  onChange={(event) => setSettings((current) => ({ ...current, ssoIssuer: event.target.value }))}
-                  className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
-                />
-              </FieldShell>
-              <FieldShell label="SSO client ID">
-                <input
-                  type="text"
-                  value={settings.ssoClientId}
-                  disabled={!canEdit}
-                  onChange={(event) => setSettings((current) => ({ ...current, ssoClientId: event.target.value }))}
-                  className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
-                />
-              </FieldShell>
-            </div>
-          </Section>
-
-          <Section title="Notifications">
-            <FieldShell label="Alert email">
-              <input
-                type="email"
-                value={settings.alertEmail}
-                disabled={!canEdit}
-                onChange={(event) => setSettings((current) => ({ ...current, alertEmail: event.target.value }))}
-                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
-              />
-            </FieldShell>
-            <FieldShell label="Webhook URL">
-              <input
-                type="url"
-                value={settings.webhookUrl}
-                disabled={!canEdit}
-                onChange={(event) => setSettings((current) => ({ ...current, webhookUrl: event.target.value }))}
-                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
-              />
-            </FieldShell>
             <ToggleRow
               label="Notify on outage resolution"
               checked={settings.notifyOnResolution}
               disabled={!canEdit}
               onChange={(checked) => setSettings((current) => ({ ...current, notifyOnResolution: checked }))}
             />
-          </Section>
+          </SettingsSection>
 
-          <Section title="Data Retention">
-            <div className="grid gap-4 md:grid-cols-2">
+          <SettingsSection title="Data Retention">
+            <div className="grid gap-4 lg:grid-cols-2">
               <FieldShell label="Notification retention days">
                 <input
                   type="number"
@@ -276,7 +341,7 @@ export default function SettingsPage() {
                   value={settings.retentionDays}
                   disabled={!canEdit}
                   onChange={(event) => setSettings((current) => ({ ...current, retentionDays: Number(event.target.value) }))}
-                  className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
+                  className={inputClass()}
                 />
               </FieldShell>
               <FieldShell label="Audit retention days">
@@ -286,19 +351,19 @@ export default function SettingsPage() {
                   value={settings.auditRetentionDays}
                   disabled={!canEdit}
                   onChange={(event) => setSettings((current) => ({ ...current, auditRetentionDays: Number(event.target.value) }))}
-                  className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
+                  className={inputClass()}
                 />
               </FieldShell>
             </div>
-          </Section>
+          </SettingsSection>
 
-          <Section title="Execution Controls">
+          <SettingsSection title="Execution Controls">
             <FieldShell label="Approval policy">
               <select
                 value={settings.approvalMode}
                 disabled={!canEdit}
                 onChange={(event) => setSettings((current) => ({ ...current, approvalMode: event.target.value }))}
-                className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm font-medium text-[#111827] outline-none focus:border-[#7C3AED] disabled:opacity-60 dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-100"
+                className={selectClass()}
               >
                 {approvalModes.map((mode) => (
                   <option key={mode} value={mode}>{mode}</option>
@@ -311,8 +376,31 @@ export default function SettingsPage() {
               disabled={!canEdit}
               onChange={(checked) => setSettings((current) => ({ ...current, allowRunnerExecution: checked }))}
             />
-          </Section>
-        </div>
+          </SettingsSection>
+
+          <SettingsSection title="Integrations">
+            <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 dark:border-slate-800">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-panel dark:bg-[#0B1020]">
+                  <tr className="text-left text-slate-500 dark:text-slate-300">
+                    <th className="px-4 py-3 font-medium">Integration</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Settings</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-[#050814]">
+                  {integrationRows.map((integration) => (
+                    <tr key={integration} className="bg-slate-50 dark:bg-[#0B1020]">
+                      <td className="px-4 py-4 font-semibold text-ink dark:text-white">{integration}</td>
+                      <td className="px-4 py-4 text-slate-600 dark:text-slate-300">Not enabled</td>
+                      <td className="px-4 py-4 text-slate-600 dark:text-slate-300">Available after this integration is enabled.</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </SettingsSection>
+        </section>
       </div>
     </AppShell>
   );
