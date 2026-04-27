@@ -175,6 +175,16 @@ export type ApprovalDecision = {
   decided_at: string;
 };
 
+export type AuditLogRecord = {
+  id: number;
+  actor_user_id?: number | null;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  details_json: Record<string, unknown>;
+  created_at: string;
+};
+
 export type NodeDetail = {
   node: NodeRecord;
   health_checks: HealthCheck[];

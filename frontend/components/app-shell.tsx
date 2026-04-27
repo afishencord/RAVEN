@@ -61,14 +61,14 @@ export function AppShell({ title, subtitle, user, children, headerActions, showH
   const navItems: NavItem[] = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/messages", label: "Message Center", icon: MessageSquare },
-    { href: "#alerts", label: "Alerts", icon: Bell, disabled: true },
+    { href: "/alerts", label: "Alerts", icon: Bell },
     { href: "#validations", label: "Validations", icon: ShieldCheck, disabled: true },
     { href: "#remediations", label: "Remediations", icon: Zap, disabled: true },
     { href: "#automations", label: "Automations", icon: Bot, disabled: true },
     { href: "/infrastructure", label: "Infrastructure", icon: Server },
     { href: "#integrations", label: "Integrations", icon: Network, disabled: true },
-    { href: "#reports", label: "Reports", icon: BarChart3, disabled: true },
-    { href: "#settings", label: "Settings", icon: Settings, disabled: true },
+    { href: "/reports", label: "Reports", icon: BarChart3 },
+    { href: "/settings", label: "Settings", icon: Settings },
     ...(user.role === "admin" ? [{ href: "/credentials", label: "Credentials", icon: KeyRound }] : []),
   ];
   const userInitials = initials(user.full_name) || user.username.slice(0, 2).toUpperCase();
