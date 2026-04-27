@@ -23,11 +23,11 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 
-import { clearToken } from "@/lib/api";
+import { apiFetch, clearToken } from "@/lib/api";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { User } from "@/lib/types";
+import { AuditLogRecord, MessageIncident, User } from "@/lib/types";
 
 type NavItem = {
   href: string;
@@ -45,6 +45,16 @@ type Props = {
   showHeaderControls?: boolean;
 };
 
+type ShellNotification = {
+  id: string;
+  at: string;
+  title: string;
+  detail: string;
+  tone: "critical" | "success" | "info";
+};
+
+const NOTIFICATION_READ_KEY = "raven.notifications.readThrough";
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -54,10 +64,69 @@ function initials(name: string) {
     .join("");
 }
 
+function titleCase(value: string) {
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function buildShellNotifications(activeMessages: MessageIncident[], archivedMessages: MessageIncident[], auditLogs: AuditLogRecord[]) {
+  const notifications: ShellNotification[] = [];
+
+  for (const message of [...activeMessages, ...archivedMessages]) {
+    const nodeName = message.node?.name ?? `Node ${message.incident.node_id}`;
+    notifications.push({
+      id: `incident:${message.incident.id}:started`,
+      at: message.incident.started_at,
+      title: `${nodeName} outage detected`,
+      detail: message.incident.summary,
+      tone: "critical",
+    });
+
+    if (message.incident.resolved_at) {
+      notifications.push({
+        id: `incident:${message.incident.id}:resolved`,
+        at: message.incident.resolved_at,
+        title: `${nodeName} outage resolved`,
+        detail: `Resolution recorded for ${message.incident.failure_type}.`,
+        tone: "success",
+      });
+    }
+  }
+
+  for (const log of auditLogs.slice(0, 25)) {
+    notifications.push({
+      id: `audit:${log.id}`,
+      at: log.created_at,
+      title: `${titleCase(log.entity_type)} ${titleCase(log.action)}`,
+      detail: `Entity ${log.entity_id}${log.actor_user_id ? ` by user ${log.actor_user_id}` : ""}`,
+      tone: "info",
+    });
+  }
+
+  return notifications.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+}
+
 export function AppShell({ title, subtitle, user, children, headerActions, showHeaderControls = true }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState<ShellNotification[]>([]);
+  const [readThrough, setReadThrough] = useState(() => {
+    if (typeof window === "undefined") {
+      return Date.now();
+    }
+    const stored = window.localStorage.getItem(NOTIFICATION_READ_KEY);
+    if (stored) {
+      return Number(stored);
+    }
+    const initial = Date.now();
+    window.localStorage.setItem(NOTIFICATION_READ_KEY, String(initial));
+    return initial;
+  });
   const navItems: NavItem[] = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/messages", label: "Message Center", icon: MessageSquare },
@@ -73,6 +142,44 @@ export function AppShell({ title, subtitle, user, children, headerActions, showH
   ];
   const userInitials = initials(user.full_name) || user.username.slice(0, 2).toUpperCase();
   const ToggleIcon = sidebarCollapsed ? PanelLeftOpen : PanelLeftClose;
+  const unreadNotifications = useMemo(
+    () => notifications.filter((notification) => new Date(notification.at).getTime() > readThrough),
+    [notifications, readThrough],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadNotifications() {
+      try {
+        const [activeMessages, archivedMessages, auditLogs] = await Promise.all([
+          apiFetch<MessageIncident[]>("/messages"),
+          apiFetch<MessageIncident[]>("/messages?archived=true"),
+          apiFetch<AuditLogRecord[]>("/audit/logs"),
+        ]);
+        if (!cancelled) {
+          setNotifications(buildShellNotifications(activeMessages, archivedMessages, auditLogs));
+        }
+      } catch {
+        if (!cancelled) {
+          setNotifications([]);
+        }
+      }
+    }
+
+    void loadNotifications();
+    const interval = window.setInterval(loadNotifications, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  function markNotificationsRead() {
+    const nextReadThrough = Math.max(Date.now(), ...notifications.map((notification) => new Date(notification.at).getTime()));
+    setReadThrough(nextReadThrough);
+    window.localStorage.setItem(NOTIFICATION_READ_KEY, String(nextReadThrough));
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#F7F8FB] text-[#111827] dark:bg-[#070B16] dark:text-slate-100">
@@ -192,10 +299,69 @@ export function AppShell({ title, subtitle, user, children, headerActions, showH
               />
               <span className="rounded-md border border-[#E5E7EB] bg-white px-1.5 py-0.5 text-[11px] font-semibold text-[#64748B] dark:border-slate-800 dark:bg-[#050814]">⌘ K</span>
             </label>
-            <button className="relative grid h-10 w-10 place-items-center rounded-xl border border-[#E5E7EB] bg-white text-slate-600 transition hover:border-[#7C3AED] hover:text-[#7C3AED] dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-300">
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#7C3AED] dark:border-[#050814]" />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="Open unread notifications"
+                aria-expanded={notificationOpen}
+                className="relative grid h-10 w-10 place-items-center rounded-xl border border-[#E5E7EB] bg-white text-slate-600 transition hover:border-[#7C3AED] hover:text-[#7C3AED] dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-300"
+                onClick={() => setNotificationOpen((current) => !current)}
+              >
+                <Bell className="h-5 w-5" />
+                {unreadNotifications.length ? (
+                  <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#7C3AED] dark:border-[#050814]" />
+                ) : null}
+              </button>
+              {notificationOpen ? (
+                <div className="absolute right-0 top-12 z-50 w-[360px] overflow-hidden rounded-[1.5rem] border border-[#E5E7EB] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-[#050814]">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+                    <div>
+                      <p className="text-sm font-semibold text-[#111827] dark:text-white">Unread notifications</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{unreadNotifications.length} new</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-full bg-panel px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:text-[#7C3AED] dark:bg-[#0B1020] dark:text-slate-200"
+                      onClick={markNotificationsRead}
+                      disabled={!unreadNotifications.length}
+                    >
+                      Mark read
+                    </button>
+                  </div>
+                  <div className="max-h-[360px] overflow-y-auto">
+                    {unreadNotifications.length ? unreadNotifications.slice(0, 8).map((notification) => (
+                      <div key={notification.id} className="border-b border-slate-100 px-4 py-3 last:border-b-0 dark:border-slate-800">
+                        <div className="flex items-start gap-3">
+                          <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                            notification.tone === "critical"
+                              ? "bg-rose-500"
+                              : notification.tone === "success"
+                                ? "bg-emerald-500"
+                                : "bg-[#7C3AED]"
+                          }`} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-[#111827] dark:text-white">{notification.title}</p>
+                            <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{notification.detail}</p>
+                            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">{new Date(notification.at).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                        No unread notifications.
+                      </div>
+                    )}
+                  </div>
+                  <Link
+                    href="/alerts"
+                    className="block border-t border-slate-200 px-4 py-3 text-center text-sm font-semibold text-[#7C3AED] transition hover:bg-panel dark:border-slate-800 dark:hover:bg-[#0B1020]"
+                    onClick={() => setNotificationOpen(false)}
+                  >
+                    View all alerts
+                  </Link>
+                </div>
+              ) : null}
+            </div>
           </div>
         </header>
 
