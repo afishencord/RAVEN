@@ -7,7 +7,6 @@ import {
   ChevronDown,
   KeyRound,
   LayoutDashboard,
-  MessageCircle,
   MessageSquare,
   Network,
   PanelLeftClose,
@@ -27,6 +26,7 @@ import { ReactNode, useEffect, useMemo, useState } from "react";
 
 import { apiFetch, clearToken } from "@/lib/api";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { PlatformChatWidget } from "@/components/platform-chat-widget";
 import { AuditLogRecord, MessageIncident, User } from "@/lib/types";
 
 type NavItem = {
@@ -394,13 +394,7 @@ export function AppShell({ title, subtitle, user, children, headerActions, showH
         </div>
       </main>
 
-      <Link
-        href="/messages"
-        className="fixed bottom-6 right-6 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#7C3AED] text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] transition hover:-translate-y-0.5 hover:bg-[#6D28D9] dark:shadow-none"
-        aria-label="Open message center"
-      >
-        <MessageCircle className="h-6 w-6" />
-      </Link>
+      <PlatformChatWidget />
     </div>
   );
 }
