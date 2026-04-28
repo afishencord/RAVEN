@@ -602,8 +602,8 @@ export function InfrastructurePage() {
       </div>
 
       {showForm ? (
-        <section className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/55 px-4 py-8 ">
-          <div className="max-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-auto rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
+        <section className="fixed inset-0 z-50 flex items-start justify-center bg-black/45 px-4 py-8 ">
+          <div className="max-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-auto rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-none dark:border-slate-800 dark:bg-[#050814]">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold">{editing ? "Edit node" : "Add node"}</h3>

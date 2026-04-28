@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState, type DragEvent } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { GitBranch, Info, Plus, Search, Trash2, X } from "lucide-react";
 
 import { CredentialRecord, NodeAutomationEdgeInput, NodeRecord, RemediationDefinition, ValidationDefinition } from "@/lib/types";
@@ -285,6 +285,11 @@ function PlaybookBuilder({
   const [query, setQuery] = useState("");
   const [connectingValidationId, setConnectingValidationId] = useState<number | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const laneRef = useRef<HTMLDivElement | null>(null);
+  const validationRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const remediationRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const [validationCenters, setValidationCenters] = useState<Record<number, number>>({});
+  const [remediationCenters, setRemediationCenters] = useState<Record<number, number>>({});
 
   const selectedValidations = useMemo(
     () => validationIds.map((id) => validations.find((item) => item.id === id)).filter((item): item is ValidationDefinition => Boolean(item)),
@@ -362,16 +367,50 @@ function PlaybookBuilder({
     }
   }
 
-  function yFor(kind: "validation" | "remediation", id: number) {
-    const index = kind === "validation" ? validationIds.indexOf(id) : remediationIds.indexOf(id);
-    return 64 + Math.max(index, 0) * 96;
-  }
-
   const validEdges = playbookEdges.filter((edge) => validationIds.includes(edge.validation_id) && remediationIds.includes(edge.remediation_id));
 
+  useEffect(() => {
+    function measureCenters() {
+      const lane = laneRef.current;
+      if (!lane) {
+        return;
+      }
+      const laneRect = lane.getBoundingClientRect();
+      const nextValidationCenters: Record<number, number> = {};
+      const nextRemediationCenters: Record<number, number> = {};
+      for (const id of validationIds) {
+        const element = validationRefs.current[id];
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          nextValidationCenters[id] = rect.top + rect.height / 2 - laneRect.top;
+        }
+      }
+      for (const id of remediationIds) {
+        const element = remediationRefs.current[id];
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          nextRemediationCenters[id] = rect.top + rect.height / 2 - laneRect.top;
+        }
+      }
+      setValidationCenters(nextValidationCenters);
+      setRemediationCenters(nextRemediationCenters);
+    }
+
+    measureCenters();
+    window.addEventListener("resize", measureCenters);
+    return () => window.removeEventListener("resize", measureCenters);
+  }, [validationIds, remediationIds, selectedValidations, selectedRemediations]);
+
+  function yFor(kind: "validation" | "remediation", id: number) {
+    if (kind === "validation") {
+      return validationCenters[id] ?? 64 + Math.max(validationIds.indexOf(id), 0) * 96;
+    }
+    return remediationCenters[id] ?? 64 + Math.max(remediationIds.indexOf(id), 0) * 96;
+  }
+
   return (
-    <section className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/65 px-4 py-8">
-      <div className="max-h-[calc(100vh-4rem)] w-full max-w-6xl overflow-hidden rounded-[2rem] border border-[#E5E7EB] bg-white shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
+    <section className="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 px-4 py-8">
+      <div className="max-h-[calc(100vh-4rem)] w-full max-w-6xl overflow-hidden rounded-[2rem] border border-[#E5E7EB] bg-white shadow-none dark:border-slate-800 dark:bg-[#050814]">
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <h3 className="text-xl font-semibold text-slate-950 dark:text-white">Manage Automatic Remediations</h3>
@@ -385,7 +424,7 @@ function PlaybookBuilder({
                 <Info className="h-4 w-4" />
               </button>
               {showInfo ? (
-                <div className="absolute left-0 top-11 z-20 w-80 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-panel dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-300">
+                <div className="absolute left-0 top-11 z-20 w-80 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-none dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-300">
                   <p>Playbooks run left to right through this node&apos;s {executionMode} path.</p>
                   <p className="mt-2">All connected validations must pass before a remediation is eligible.</p>
                 </div>
@@ -460,12 +499,18 @@ function PlaybookBuilder({
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleDrop}
           >
-            <div className="grid min-w-[44rem] grid-cols-[1fr_8rem_1fr] gap-4">
+            <div className="grid min-w-[44rem] grid-cols-[1fr_8rem_1fr] gap-y-4">
               <div>
                 <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Validations</p>
                 <div className="space-y-4">
                   {selectedValidations.map((validation) => (
-                    <div key={validation.id} className="group relative rounded-2xl border border-slate-200 bg-panel p-4 dark:border-slate-800 dark:bg-[#0B1020]">
+                    <div
+                      key={validation.id}
+                      ref={(element) => {
+                        validationRefs.current[validation.id] = element;
+                      }}
+                      className="group relative rounded-2xl border border-slate-200 bg-panel p-4 dark:border-slate-800 dark:bg-[#0B1020]"
+                    >
                       <button
                         type="button"
                         title="Start connection"
@@ -491,17 +536,17 @@ function PlaybookBuilder({
                 </div>
               </div>
 
-              <div className="relative min-h-[28rem] rounded-2xl bg-slate-50/70 dark:bg-[#090E1B]">
+              <div ref={laneRef} className="relative min-h-[28rem]">
                 <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible" preserveAspectRatio="none">
                   {validEdges.map((edge) => {
                     const fromY = yFor("validation", edge.validation_id);
                     const toY = yFor("remediation", edge.remediation_id);
                     return (
                       <g key={`${edge.validation_id}:${edge.remediation_id}`}>
-                        <path d={`M 0 ${fromY} C 42 ${fromY}, 86 ${toY}, 128 ${toY}`} stroke="#C4B5FD" strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.55" />
-                        <path d={`M 0 ${fromY} C 42 ${fromY}, 86 ${toY}, 128 ${toY}`} stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" fill="none" />
-                        <circle cx="0" cy={fromY} r="6" fill="#7C3AED" />
-                        <circle cx="128" cy={toY} r="6" fill="#7C3AED" />
+                        <path d={`M 12 ${fromY} C 46 ${fromY}, 82 ${toY}, 116 ${toY}`} stroke="#C4B5FD" strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.55" />
+                        <path d={`M 12 ${fromY} C 46 ${fromY}, 82 ${toY}, 116 ${toY}`} stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" fill="none" />
+                        <circle cx="12" cy={fromY} r="6" fill="#7C3AED" />
+                        <circle cx="116" cy={toY} r="6" fill="#7C3AED" />
                       </g>
                     );
                   })}
@@ -512,7 +557,13 @@ function PlaybookBuilder({
                 <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Remediations</p>
                 <div className="space-y-4">
                   {selectedRemediations.map((remediation) => (
-                    <div key={remediation.id} className="group relative rounded-2xl border border-slate-200 bg-panel p-4 dark:border-slate-800 dark:bg-[#0B1020]">
+                    <div
+                      key={remediation.id}
+                      ref={(element) => {
+                        remediationRefs.current[remediation.id] = element;
+                      }}
+                      className="group relative rounded-2xl border border-slate-200 bg-panel p-4 dark:border-slate-800 dark:bg-[#0B1020]"
+                    >
                       <button
                         type="button"
                         title="Complete connection"

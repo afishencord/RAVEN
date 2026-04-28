@@ -62,6 +62,10 @@ function categoryIcon(category: AlertEvent["category"]) {
   return Clock3;
 }
 
+function isRoutineHealthCheckPassed(log: AuditLogRecord) {
+  return log.entity_type === "node" && log.action === "health_check_passed";
+}
+
 function buildAlerts(messages: MessageIncident[], archivedMessages: MessageIncident[], auditLogs: AuditLogRecord[], nodes: NodeRecord[]) {
   const combinedMessages = [...messages, ...archivedMessages];
   const events: AlertEvent[] = [
@@ -116,7 +120,7 @@ function buildAlerts(messages: MessageIncident[], archivedMessages: MessageIncid
     });
   }
 
-  for (const log of auditLogs) {
+  for (const log of auditLogs.filter((item) => !isRoutineHealthCheckPassed(item))) {
     events.push({
       id: `audit:${log.id}`,
       at: log.created_at,

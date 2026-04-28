@@ -370,7 +370,7 @@ export function PlatformChatWidget() {
   return (
     <>
       {open ? (
-        <section className="fixed bottom-24 left-4 right-4 z-50 overflow-hidden rounded-[1.5rem] border border-[#E5E7EB] bg-white shadow-[0_24px_70px_rgba(15,23,42,0.24)] dark:border-slate-800 dark:bg-[#050814] sm:left-auto sm:w-[430px]" aria-label="RAVEN state chat">
+        <section className="fixed bottom-24 left-4 right-4 z-50 overflow-hidden rounded-[1.5rem] border border-[#E5E7EB] bg-white shadow-none dark:border-slate-800 dark:bg-[#050814] sm:left-auto sm:w-[430px]" aria-label="RAVEN state chat">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
             <div className="flex min-w-0 items-center gap-3">
               <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#2B195D] text-white">

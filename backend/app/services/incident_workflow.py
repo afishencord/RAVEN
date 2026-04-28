@@ -134,14 +134,6 @@ def process_health_result(db: Session, node: Node, result: dict, actor: User | N
     if result["success"]:
         node.current_status = "healthy"
         _resolve_active_incident(db, node)
-        write_audit_log(
-            db,
-            actor=actor,
-            entity_type="node",
-            entity_id=str(node.id),
-            action="health_check_passed",
-            details={"status": "healthy"},
-        )
         return health_row
 
     recent_failures = _consecutive_failure_count(db, node) + 1

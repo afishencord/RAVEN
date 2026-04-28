@@ -223,8 +223,8 @@ export default function ValidationsPage() {
       </section>
 
       {showForm ? (
-        <section className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/55 px-4 py-8">
-          <form className="max-h-[calc(100vh-4rem)] w-full max-w-4xl overflow-auto rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none" onSubmit={submitForm}>
+        <section className="fixed inset-0 z-50 flex items-start justify-center bg-black/45 px-4 py-8">
+          <form className="max-h-[calc(100vh-4rem)] w-full max-w-4xl overflow-auto rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-none dark:border-slate-800 dark:bg-[#050814]" onSubmit={submitForm}>
             <div className="mb-5 flex items-center justify-between gap-4">
               <h3 className="text-xl font-semibold">{editing ? "Edit validation" : "Add validation"}</h3>
               <button type="button" className="rounded-full bg-panel px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-[#0B1020] dark:text-slate-200" onClick={() => setShowForm(false)}>Close</button>
