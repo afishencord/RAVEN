@@ -59,7 +59,6 @@ export default function NodeDetailPage() {
     <AppShell
       user={user}
       title={detail ? detail.node.name : "Node detail"}
-      subtitle="Inspect health history, incident context, command recommendations, and execution timeline for a single node."
     >
       <Link href="/infrastructure" className="inline-flex rounded-full bg-panel px-4 py-2 text-sm font-medium text-slate-700 dark:bg-[#0B1020] dark:text-slate-200">
         Back to infrastructure
@@ -100,9 +99,6 @@ export default function NodeDetailPage() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h3 className="text-xl font-semibold">Automatic remediation playbook</h3>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                  Assigned validations must pass before RAVEN can ask the model to choose an assigned remediation.
-                </p>
               </div>
             </div>
             {assignments ? (
@@ -116,7 +112,7 @@ export default function NodeDetailPage() {
             <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <h3 className="text-xl font-semibold">Health check history</h3>
               <div className="mt-4 space-y-3">
-                {detail.health_checks.map((check) => (
+                {detail.health_checks.slice(0, 10).map((check) => (
                   <div key={check.id} className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                     <div className="flex items-center justify-between gap-3">
                       <StatusBadge status={check.status} />
@@ -134,7 +130,7 @@ export default function NodeDetailPage() {
             <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <h3 className="text-xl font-semibold">Incident history</h3>
               <div className="mt-4 space-y-3">
-                {detail.incidents.map((incident) => (
+                {detail.incidents.slice(0, 10).map((incident) => (
                   <div key={incident.id} className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                     <div className="flex items-center justify-between gap-3">
                       <StatusBadge status={incident.status} />
@@ -152,7 +148,7 @@ export default function NodeDetailPage() {
             <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <h3 className="text-xl font-semibold">Recommendation history</h3>
               <div className="mt-4 space-y-3">
-                {detail.recommendations.map((recommendation) => (
+                {detail.recommendations.slice(0, 5).map((recommendation) => (
                   <div key={recommendation.id} className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{recommendation.model_name}</p>
                     <p className="mt-2 font-semibold">{recommendation.summary}</p>
@@ -178,7 +174,7 @@ export default function NodeDetailPage() {
             <div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
               <h3 className="text-xl font-semibold">Execution history</h3>
               <div className="mt-4 space-y-3">
-                {detail.executions.map((task) => (
+                {detail.executions.slice(0, 5).map((task) => (
                   <div key={task.id} className="rounded-3xl bg-panel p-4 dark:bg-[#0B1020]">
                     <div className="flex items-center justify-between gap-3">
                       <StatusBadge status={task.status} />
