@@ -203,8 +203,6 @@ docker compose exec -T backend curl -fsS http://localhost:8000/api/health
 docker compose exec -T backend curl -fsSI http://frontend:3000/messages
 ```
 
-If `npm run build` fails in a sandbox with an `EPERM` copyfile error under `.next`, rerun outside the sandbox. The app can still compile successfully before that sandbox-specific copy step fails.
-
 ## API Highlights
 
 - `POST /api/auth/login`
