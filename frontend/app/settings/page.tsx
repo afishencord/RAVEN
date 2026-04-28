@@ -38,7 +38,16 @@ const defaultSettings = {
   ldapEnabled: false,
   ssoEnabled: false,
   ldapUrl: "",
+  ldapBindDn: "",
   ldapBaseDn: "",
+  ldapUserSearchBase: "",
+  ldapGroupSearchBase: "",
+  ldapUserFilter: "",
+  ldapGroupFilter: "",
+  ldapLoginAttribute: "",
+  ldapEmailAttribute: "",
+  ldapNameAttribute: "",
+  ldapMembershipAttribute: "",
   ssoIssuer: "",
   ssoClientId: "",
   alertEmail: "ops@example.com",
@@ -73,16 +82,22 @@ function SettingsSection({ title, children }: { title: string; children: ReactNo
 
 function ToggleRow({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
   return (
-    <label className="flex items-center justify-between gap-4 rounded-2xl bg-panel px-4 py-3 text-sm dark:bg-[#0B1020]">
+    <div className="flex items-center justify-between gap-4 rounded-2xl bg-panel px-4 py-3 text-sm dark:bg-[#0B1020]">
       <span className="font-medium text-slate-700 dark:text-slate-200">{label}</span>
-      <input
-        type="checkbox"
-        checked={checked}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-5 w-5 rounded border-slate-300 text-[#7C3AED] focus:ring-[#7C3AED] disabled:opacity-50"
-      />
-    </label>
+        onClick={() => onChange(!checked)}
+        className="inline-flex items-center gap-2 rounded-full text-xs font-semibold text-slate-600 transition disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300"
+      >
+        <span className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${checked ? "bg-[#7C3AED]" : "bg-slate-300 dark:bg-slate-700"}`}>
+          <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition ${checked ? "translate-x-6" : "translate-x-1"}`} />
+        </span>
+        <span>{checked ? "Enabled" : "Disabled"}</span>
+      </button>
+    </div>
   );
 }
 
@@ -258,15 +273,107 @@ export default function SettingsPage() {
                       value={settings.ldapUrl}
                       disabled={!canEdit || !settings.ldapEnabled}
                       onChange={(event) => setSettings((current) => ({ ...current, ldapUrl: event.target.value }))}
+                      placeholder="ldaps://dc01.example.com:636"
                       className={inputClass()}
                     />
                   </FieldShell>
-                  <FieldShell label="LDAP base DN">
+                  <FieldShell label="Bind DN">
+                    <input
+                      type="text"
+                      value={settings.ldapBindDn}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapBindDn: event.target.value }))}
+                      placeholder="CN=svc-ldapbind,OU=Service Accounts,DC=example,DC=com"
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="Base DN">
                     <input
                       type="text"
                       value={settings.ldapBaseDn}
                       disabled={!canEdit || !settings.ldapEnabled}
                       onChange={(event) => setSettings((current) => ({ ...current, ldapBaseDn: event.target.value }))}
+                      placeholder="DC=example,DC=com"
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="User Search Base">
+                    <input
+                      type="text"
+                      value={settings.ldapUserSearchBase}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapUserSearchBase: event.target.value }))}
+                      placeholder="OU=Users,DC=example,DC=com"
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="Group Search Base">
+                    <input
+                      type="text"
+                      value={settings.ldapGroupSearchBase}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapGroupSearchBase: event.target.value }))}
+                      placeholder="OU=Groups,DC=example,DC=com"
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="User Filter">
+                    <input
+                      type="text"
+                      value={settings.ldapUserFilter}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapUserFilter: event.target.value }))}
+                      placeholder="(sAMAccountName={username})"
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="Group Filter">
+                    <input
+                      type="text"
+                      value={settings.ldapGroupFilter}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapGroupFilter: event.target.value }))}
+                      placeholder="(member={userDN})"
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="Login Attribute">
+                    <input
+                      type="text"
+                      value={settings.ldapLoginAttribute}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapLoginAttribute: event.target.value }))}
+                      placeholder="sAMAccountName"
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="Email Attribute">
+                    <input
+                      type="text"
+                      value={settings.ldapEmailAttribute}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapEmailAttribute: event.target.value }))}
+                      placeholder="mail"
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="Name Attribute">
+                    <input
+                      type="text"
+                      value={settings.ldapNameAttribute}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapNameAttribute: event.target.value }))}
+                      placeholder="displayName"
+                      className={inputClass()}
+                    />
+                  </FieldShell>
+                  <FieldShell label="Membership Attribute">
+                    <input
+                      type="text"
+                      value={settings.ldapMembershipAttribute}
+                      disabled={!canEdit || !settings.ldapEnabled}
+                      onChange={(event) => setSettings((current) => ({ ...current, ldapMembershipAttribute: event.target.value }))}
+                      placeholder="memberOf"
                       className={inputClass()}
                     />
                   </FieldShell>

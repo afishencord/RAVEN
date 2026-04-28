@@ -72,6 +72,10 @@ function titleCase(value: string) {
     .join(" ");
 }
 
+function isRoutineHealthCheckPassed(log: AuditLogRecord) {
+  return log.entity_type === "node" && log.action === "health_check_passed";
+}
+
 function buildShellNotifications(activeMessages: MessageIncident[], archivedMessages: MessageIncident[], auditLogs: AuditLogRecord[]) {
   const notifications: ShellNotification[] = [];
 
@@ -96,7 +100,7 @@ function buildShellNotifications(activeMessages: MessageIncident[], archivedMess
     }
   }
 
-  for (const log of auditLogs.slice(0, 25)) {
+  for (const log of auditLogs.filter((item) => !isRoutineHealthCheckPassed(item)).slice(0, 25)) {
     notifications.push({
       id: `audit:${log.id}`,
       at: log.created_at,
