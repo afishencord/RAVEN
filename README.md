@@ -52,6 +52,8 @@ docker-compose.yml        backend, runner, and frontend deployment
 - Alerts page (work in progress, frontend wired) with a unified notification table and date/category filters
 - Reports page (work in progress, frontend wired) with report previews and CSV/JSON export
 - Settings page (work in progress, frontend wired) for model, API key override, LDAP/SSO, organization, notification, retention, and execution settings
+- Validations and Remediations pages for reusable automation checks and approved remediation definitions
+- Node-level automatic remediation playbooks with a no-code builder, validation-to-remediation connections, and left-to-right execution logic
 - Message Center with:
   - live active and archived incident conversations
   - chat-style remediation timeline
@@ -69,6 +71,11 @@ docker-compose.yml        backend, runner, and frontend deployment
   - follow-up responses are intentionally short
   - each AI turn produces three command cards
   - new proposal IDs are generated to avoid repeating prior command cards
+- Validation-gated automatic remediation:
+  - validations can execute through a node's runner or agent route
+  - expected text can be written as natural language and evaluated by the model against command or HTTP output
+  - connected remediations become eligible only when all linked validations match
+  - the model selects from eligible remediations, with a deterministic single-remediation fallback when no model client is available
 - Separate runner process for queued command execution
 - Audit logs and approval decision records
 
@@ -82,7 +89,7 @@ RAVEN keeps AI out of the direct execution path:
 - The `raven-runner` container polls queued tasks and performs execution.
 - Frontend code never executes shell commands.
 - Command execution records include command preview, exit code, output, and post-action validation.
-- OpenAI calls are limited to incident recommendation generation and user/operator-prompted follow-up workflows.
+- OpenAI calls are limited to incident recommendation generation, validation-output evaluation, automation gate selection, and user/operator-prompted follow-up workflows.
 
 The runner currently treats exit codes `0` and `3` as successful command completions. Post-action validation still determines whether the incident appears resolved.
 
@@ -210,6 +217,13 @@ If `npm run build` fails in a sandbox with an `EPERM` copyfile error under `.nex
 - `POST /api/node-groups`
 - `DELETE /api/node-groups/{id}`
 - `GET /api/dashboard/metrics`
+- `GET|POST /api/validations`
+- `PUT|DELETE /api/validations/{id}`
+- `POST /api/validations/{id}/test`
+- `GET|POST /api/remediations`
+- `PUT|DELETE /api/remediations/{id}`
+- `POST /api/remediations/{id}/test-preview`
+- `GET|PUT /api/nodes/{id}/automation-assignments`
 - `GET /api/audit/logs`
 - `GET /api/audit/approvals`
 - `GET /api/messages`
@@ -230,12 +244,14 @@ If `npm run build` fails in a sandbox with an `EPERM` copyfile error under `.nex
 
 1. Monitoring detects repeated health-check failures.
 2. Backend creates an incident and internal alert message.
-3. AI generates the initial summary and three command cards using node context and failure details.
-4. Operator approves or rejects one proposed command.
-5. Runner executes approved commands and records output.
-6. Backend performs post-action validation.
-7. If validation is still unhealthy, AI generates a new short follow-up using raw command output.
-8. If validation is healthy, UI shows:
+3. If the node has an automatic remediation playbook, backend runs assigned validations and evaluates connected remediation eligibility.
+4. If playbook validations match, RAVEN can queue an automated remediation through the node's configured execution route.
+5. AI generates the initial summary and three command cards using node context and failure details.
+6. Operator approves or rejects one proposed command.
+7. Runner executes approved or automated commands and records output.
+8. Backend performs post-action validation.
+9. If validation is still unhealthy, AI generates a new short follow-up using raw command output.
+10. If validation is healthy, UI shows:
    - `Close incident`: marks resolved and archives the conversation.
    - `Investigate further`: keeps the thread active and starts root-cause analysis.
 

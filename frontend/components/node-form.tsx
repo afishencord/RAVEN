@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState, type DragEvent } from "react";
-import { GitBranch, Plus, Search, Trash2, X } from "lucide-react";
+import { GitBranch, Info, Plus, Search, Trash2, X } from "lucide-react";
 
 import { CredentialRecord, NodeAutomationEdgeInput, NodeRecord, RemediationDefinition, ValidationDefinition } from "@/lib/types";
 
@@ -284,6 +284,7 @@ function PlaybookBuilder({
   const [picker, setPicker] = useState<"validation" | "remediation">("validation");
   const [query, setQuery] = useState("");
   const [connectingValidationId, setConnectingValidationId] = useState<number | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
 
   const selectedValidations = useMemo(
     () => validationIds.map((id) => validations.find((item) => item.id === id)).filter((item): item is ValidationDefinition => Boolean(item)),
@@ -372,9 +373,24 @@ function PlaybookBuilder({
     <section className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/65 px-4 py-8">
       <div className="max-h-[calc(100vh-4rem)] w-full max-w-6xl overflow-hidden rounded-[2rem] border border-[#E5E7EB] bg-white shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
-          <div>
+          <div className="flex items-center gap-3">
             <h3 className="text-xl font-semibold text-slate-950 dark:text-white">Manage Automatic Remediations</h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Playbooks run left to right through this node&apos;s {executionMode} path.</p>
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="Automation playbook information"
+                className="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 bg-panel text-slate-600 transition hover:border-[#7C3AED] hover:text-[#7C3AED] dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-300"
+                onClick={() => setShowInfo((current) => !current)}
+              >
+                <Info className="h-4 w-4" />
+              </button>
+              {showInfo ? (
+                <div className="absolute left-0 top-11 z-20 w-80 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-panel dark:border-slate-800 dark:bg-[#0B1020] dark:text-slate-300">
+                  <p>Playbooks run left to right through this node&apos;s {executionMode} path.</p>
+                  <p className="mt-2">All connected validations must pass before a remediation is eligible.</p>
+                </div>
+              ) : null}
+            </div>
           </div>
           <button type="button" aria-label="Close playbook builder" className="grid h-10 w-10 place-items-center rounded-xl bg-panel text-slate-700 dark:bg-[#0B1020] dark:text-slate-200" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -475,23 +491,21 @@ function PlaybookBuilder({
                 </div>
               </div>
 
-              <div className="relative">
-                <svg className="absolute inset-0 h-full w-full overflow-visible" preserveAspectRatio="none">
+              <div className="relative min-h-[28rem] rounded-2xl bg-slate-50/70 dark:bg-[#090E1B]">
+                <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible" preserveAspectRatio="none">
                   {validEdges.map((edge) => {
                     const fromY = yFor("validation", edge.validation_id);
                     const toY = yFor("remediation", edge.remediation_id);
                     return (
                       <g key={`${edge.validation_id}:${edge.remediation_id}`}>
-                        <path d={`M 0 ${fromY} C 40 ${fromY}, 88 ${toY}, 128 ${toY}`} stroke="#7C3AED" strokeWidth="2" fill="none" />
-                        <circle cx="0" cy={fromY} r="4" fill="#7C3AED" />
-                        <circle cx="128" cy={toY} r="4" fill="#7C3AED" />
+                        <path d={`M 0 ${fromY} C 42 ${fromY}, 86 ${toY}, 128 ${toY}`} stroke="#C4B5FD" strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.55" />
+                        <path d={`M 0 ${fromY} C 42 ${fromY}, 86 ${toY}, 128 ${toY}`} stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" fill="none" />
+                        <circle cx="0" cy={fromY} r="6" fill="#7C3AED" />
+                        <circle cx="128" cy={toY} r="6" fill="#7C3AED" />
                       </g>
                     );
                   })}
                 </svg>
-                <div className="relative z-10 flex h-full items-center justify-center">
-                  <span className="rounded-full bg-panel px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-[#0B1020] dark:text-slate-400">All connected validations must pass</span>
-                </div>
               </div>
 
               <div>
