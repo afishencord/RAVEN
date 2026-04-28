@@ -299,19 +299,19 @@ export default function DashboardPage() {
             </section>
 
             <section className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-[1.5rem] bg-[#111827] p-5 text-white dark:bg-[#0B1020]">
-                <Activity className="h-5 w-5 text-purple-300" />
-                <p className="mt-4 text-sm text-slate-300">Automation throughput</p>
+              <div className="rounded-[1.5rem] border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-panel dark:border-slate-800 dark:bg-[#0B1020] dark:text-white dark:shadow-none">
+                <Activity className="h-5 w-5 text-[#7C3AED] dark:text-purple-300" />
+                <p className="mt-4 text-sm text-slate-500 dark:text-slate-300">Automation throughput</p>
                 <p className="mt-2 text-2xl font-semibold">{total(metrics.execution_status_counts)}</p>
               </div>
-              <div className="rounded-[1.5rem] bg-[#111827] p-5 text-white dark:bg-[#0B1020]">
-                <ShieldCheck className="h-5 w-5 text-emerald-300" />
-                <p className="mt-4 text-sm text-slate-300">Human decisions</p>
+              <div className="rounded-[1.5rem] border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-panel dark:border-slate-800 dark:bg-[#0B1020] dark:text-white dark:shadow-none">
+                <ShieldCheck className="h-5 w-5 text-[#16A34A] dark:text-emerald-300" />
+                <p className="mt-4 text-sm text-slate-500 dark:text-slate-300">Human decisions</p>
                 <p className="mt-2 text-2xl font-semibold">{total(metrics.approval_decision_counts)}</p>
               </div>
-              <div className="rounded-[1.5rem] bg-[#111827] p-5 text-white dark:bg-[#0B1020]">
-                <Server className="h-5 w-5 text-sky-300" />
-                <p className="mt-4 text-sm text-slate-300">Environment groups</p>
+              <div className="rounded-[1.5rem] border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-panel dark:border-slate-800 dark:bg-[#0B1020] dark:text-white dark:shadow-none">
+                <Server className="h-5 w-5 text-[#0EA5E9] dark:text-sky-300" />
+                <p className="mt-4 text-sm text-slate-500 dark:text-slate-300">Environment groups</p>
                 <p className="mt-2 text-2xl font-semibold">{metrics.environment_counts.length}</p>
               </div>
             </section>
