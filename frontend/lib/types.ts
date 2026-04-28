@@ -175,6 +175,96 @@ export type ApprovalDecision = {
   decided_at: string;
 };
 
+export type ValidationDefinition = {
+  id: number;
+  name: string;
+  description?: string | null;
+  validation_type: "http" | "command" | string;
+  command?: string | null;
+  url?: string | null;
+  path?: string | null;
+  expected_status_code?: number | null;
+  expected_exit_code: number;
+  expected_response_contains?: string | null;
+  timeout_seconds: number;
+  is_enabled: boolean;
+  assigned_node_count: number;
+  last_run_status?: string | null;
+  last_run_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RemediationDefinition = {
+  id: number;
+  name: string;
+  description?: string | null;
+  command: string;
+  risk_level: string;
+  execution_mode?: string | null;
+  is_enabled: boolean;
+  assigned_node_count: number;
+  last_run_status?: string | null;
+  last_run_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ValidationRun = {
+  id: number;
+  node_id: number;
+  incident_id?: number | null;
+  validation_id: number;
+  validation_name?: string | null;
+  status: string;
+  matched_expectation: boolean;
+  observed_status_code?: number | null;
+  observed_exit_code?: number | null;
+  output?: string | null;
+  error_detail?: string | null;
+  started_at: string;
+  finished_at?: string | null;
+};
+
+export type NodeValidationAssignment = {
+  id: number;
+  node_id: number;
+  validation_id: number;
+  is_enabled: boolean;
+  sort_order: number;
+  validation: ValidationDefinition;
+};
+
+export type NodeRemediationAssignment = {
+  id: number;
+  node_id: number;
+  remediation_id: number;
+  is_enabled: boolean;
+  sort_order: number;
+  remediation: RemediationDefinition;
+};
+
+export type NodeAutomationEdge = {
+  id: number;
+  node_id: number;
+  validation_id: number;
+  remediation_id: number;
+  is_enabled: boolean;
+  sort_order: number;
+};
+
+export type NodeAutomationEdgeInput = {
+  validation_id: number;
+  remediation_id: number;
+};
+
+export type NodeAutomationAssignments = {
+  node_id: number;
+  validations: NodeValidationAssignment[];
+  remediations: NodeRemediationAssignment[];
+  edges: NodeAutomationEdge[];
+};
+
 export type AuditLogRecord = {
   id: number;
   actor_user_id?: number | null;
@@ -200,6 +290,7 @@ export type MessageIncident = {
   node: NodeRecord;
   latest_recommendation?: Recommendation | null;
   recommendations: Recommendation[];
+  validation_runs: ValidationRun[];
   notes: IncidentNote[];
   executions: ExecutionTask[];
   approvals: ApprovalDecision[];

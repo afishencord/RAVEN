@@ -10,7 +10,7 @@ import { NodeForm } from "@/components/node-form";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch, requireSession } from "@/lib/api";
 import { useLiveRefresh } from "@/lib/live-updates";
-import { CredentialRecord, NodeGroupRecord, NodeRecord, User } from "@/lib/types";
+import { CredentialRecord, NodeAutomationAssignments, NodeAutomationEdgeInput, NodeGroupRecord, NodeRecord, RemediationDefinition, User, ValidationDefinition } from "@/lib/types";
 
 const filters = ["all", "healthy", "degraded", "down", "disabled"] as const;
 const tabs = ["nodes", "fleet"] as const;
@@ -96,6 +96,11 @@ export function InfrastructurePage() {
   const [nodes, setNodes] = useState<NodeRecord[]>([]);
   const [nodeGroups, setNodeGroups] = useState<NodeGroupRecord[]>([]);
   const [credentials, setCredentials] = useState<CredentialRecord[]>([]);
+  const [validations, setValidations] = useState<ValidationDefinition[]>([]);
+  const [remediations, setRemediations] = useState<RemediationDefinition[]>([]);
+  const [formValidationIds, setFormValidationIds] = useState<number[]>([]);
+  const [formRemediationIds, setFormRemediationIds] = useState<number[]>([]);
+  const [formAutomationEdges, setFormAutomationEdges] = useState<NodeAutomationEdgeInput[]>([]);
   const [activeTab, setActiveTab] = useState<InfrastructureTab>("nodes");
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
@@ -132,12 +137,16 @@ export function InfrastructurePage() {
         const requests: Promise<unknown>[] = [apiFetch<NodeRecord[]>("/nodes"), apiFetch<NodeGroupRecord[]>("/node-groups")];
         if (session.role === "admin") {
           requests.push(apiFetch<CredentialRecord[]>("/credentials"));
+          requests.push(apiFetch<ValidationDefinition[]>("/validations"));
+          requests.push(apiFetch<RemediationDefinition[]>("/remediations"));
         }
         Promise.all(requests)
-          .then(([nodeData, groupData, credentialData]) => {
+          .then(([nodeData, groupData, credentialData, validationData, remediationData]) => {
             setNodes(nodeData as NodeRecord[]);
             setNodeGroups(groupData as NodeGroupRecord[]);
             setCredentials((credentialData as CredentialRecord[]) ?? []);
+            setValidations((validationData as ValidationDefinition[]) ?? []);
+            setRemediations((remediationData as RemediationDefinition[]) ?? []);
             setLastSynced(new Date().toISOString());
           })
           .catch((err) => setError(err instanceof Error ? err.message : "Failed to load infrastructure"))
@@ -153,12 +162,52 @@ export function InfrastructurePage() {
   });
 
   async function saveNode(payload: Record<string, unknown>) {
+    const validationIds = (payload.automation_validation_ids as number[] | undefined) ?? [];
+    const remediationIds = (payload.automation_remediation_ids as number[] | undefined) ?? [];
+    const automationEdges = (payload.automation_edges as NodeAutomationEdgeInput[] | undefined) ?? [];
+    const { automation_validation_ids: _validationIds, automation_remediation_ids: _remediationIds, automation_edges: _automationEdges, ...nodePayload } = payload;
     const path = editing ? `/nodes/${editing.id}` : "/nodes";
     const method = editing ? "PUT" : "POST";
-    await apiFetch<NodeRecord>(path, { method, body: JSON.stringify(payload) });
+    const saved = await apiFetch<NodeRecord>(path, { method, body: JSON.stringify(nodePayload) });
+    if (canAdminister) {
+      await apiFetch<NodeAutomationAssignments>(`/nodes/${saved.id}/automation-assignments`, {
+        method: "PUT",
+        body: JSON.stringify({ validation_ids: validationIds, remediation_ids: remediationIds, edges: automationEdges }),
+      });
+    }
     setShowForm(false);
     setEditing(null);
+    setFormValidationIds([]);
+    setFormRemediationIds([]);
+    setFormAutomationEdges([]);
     await refreshInfrastructure();
+  }
+
+  async function openEditNode(node: NodeRecord) {
+    setEditing(node);
+    setError("");
+    if (canAdminister) {
+      try {
+        const assignments = await apiFetch<NodeAutomationAssignments>(`/nodes/${node.id}/automation-assignments`);
+        setFormValidationIds(assignments.validations.map((item) => item.validation_id));
+        setFormRemediationIds(assignments.remediations.map((item) => item.remediation_id));
+        setFormAutomationEdges((assignments.edges ?? []).map((edge) => ({ validation_id: edge.validation_id, remediation_id: edge.remediation_id })));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load automation assignments");
+        setFormValidationIds([]);
+        setFormRemediationIds([]);
+        setFormAutomationEdges([]);
+      }
+    }
+    setShowForm(true);
+  }
+
+  function openCreateNode() {
+    setEditing(null);
+    setFormValidationIds([]);
+    setFormRemediationIds([]);
+    setFormAutomationEdges([]);
+    setShowForm(true);
   }
 
   async function deleteNode(nodeId: number) {
@@ -342,7 +391,7 @@ export function InfrastructurePage() {
           <div className="flex flex-wrap gap-2">
             {canAdminister ? (
               <>
-                <IconButton label={`Edit ${node.name}`} onClick={() => { setEditing(node); setShowForm(true); }}>
+                <IconButton label={`Edit ${node.name}`} onClick={() => { void openEditNode(node); }}>
                   <Pencil className="h-4 w-4" />
                 </IconButton>
                 <IconButton label={`${node.is_enabled ? "Disable" : "Enable"} ${node.name}`} onClick={() => toggleNode(node)}>
@@ -427,10 +476,7 @@ export function InfrastructurePage() {
                     </button>
                     <button
                       className="h-10 rounded-xl bg-ink px-5 text-sm font-semibold text-white transition hover:bg-ember dark:bg-ember"
-                      onClick={() => {
-                        setEditing(null);
-                        setShowForm(true);
-                      }}
+                      onClick={openCreateNode}
                     >
                       Add node
                     </button>
@@ -568,12 +614,32 @@ export function InfrastructurePage() {
                 onClick={() => {
                   setShowForm(false);
                   setEditing(null);
+                  setFormValidationIds([]);
+                  setFormRemediationIds([]);
+                  setFormAutomationEdges([]);
                 }}
               >
                 Close
               </button>
             </div>
-            <NodeForm credentials={credentials} initial={editing} onSubmit={saveNode} onCancel={() => { setShowForm(false); setEditing(null); }} />
+            <NodeForm
+              key={editing ? `edit:${editing.id}:${formValidationIds.join(",")}:${formRemediationIds.join(",")}:${formAutomationEdges.map((edge) => `${edge.validation_id}-${edge.remediation_id}`).join(",")}` : "create"}
+              credentials={credentials}
+              validations={validations}
+              remediations={remediations}
+              initialValidationIds={formValidationIds}
+              initialRemediationIds={formRemediationIds}
+              initialAutomationEdges={formAutomationEdges}
+              initial={editing}
+              onSubmit={saveNode}
+              onCancel={() => {
+                setShowForm(false);
+                setEditing(null);
+                setFormValidationIds([]);
+                setFormRemediationIds([]);
+                setFormAutomationEdges([]);
+              }}
+            />
           </div>
         </section>
       ) : null}

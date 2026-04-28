@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AIRecommendation, AlertMessage, AuditLog, ExecutionTask, HealthCheckResult, Incident, Node, User, utcnow
 from app.services.ai_service import AIRecommendationService
+from app.services.automation import run_incident_automation
 from app.services.health_checks import run_health_check
 
 ai_service = AIRecommendationService()
@@ -179,6 +180,7 @@ def process_health_result(db: Session, node: Node, result: dict, actor: User | N
         db.flush()
         _create_alert_message(db, incident, node)
         _create_recommendation(db, node, incident)
+        run_incident_automation(db, node=node, incident=incident)
         write_audit_log(
             db,
             actor=actor,

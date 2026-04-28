@@ -356,6 +356,136 @@ class AIRecommendationService:
             model_name=settings.openai_model if self.client else "fallback",
         )
 
+    def generate_automation_gate(
+        self,
+        *,
+        node: Node,
+        incident: Incident,
+        validation_results: list[dict],
+        remediations: list[dict],
+    ) -> dict:
+        fallback = {
+            "selected_remediation_id": None,
+            "decision": "no_action",
+            "summary": "Automation gate skipped because model gating is unavailable.",
+            "rationale": "RAVEN requires model confirmation before automatically selecting an assigned remediation.",
+        }
+        if not self.client:
+            return fallback
+
+        prompt = {
+            "node": {
+                "name": node.name,
+                "environment": node.environment,
+                "host": node.host,
+                "execution_mode": node.execution_mode,
+                "execution_target": node.execution_target,
+                "context_text": node.context_text,
+                "approved_command_policy": node.approved_command_policy,
+            },
+            "incident": {
+                "id": incident.id,
+                "failure_type": incident.failure_type,
+                "summary": incident.summary,
+                "details": incident.details_json,
+                "started_at": incident.started_at.isoformat(),
+            },
+            "validation_results": validation_results,
+            "assigned_remediations": remediations,
+            "instructions": [
+                "Return strict JSON only.",
+                "Select at most one remediation by id from assigned_remediations.",
+                "Do not invent commands or remediation ids.",
+                "Select a remediation only when validation_results show the expected preconditions passed.",
+                "If the evidence is insufficient, choose no action.",
+            ],
+            "response_schema": {
+                "selected_remediation_id": "integer|null",
+                "decision": "run|no_action",
+                "summary": "string",
+                "rationale": "string",
+            },
+        }
+
+        try:
+            response = self.client.responses.create(
+                model=settings.openai_model,
+                instructions="You are a cautious SRE automation gate for RAVEN. Output strict JSON only.",
+                input=json.dumps(prompt),
+            )
+            payload = _extract_json_payload(response.output_text)
+            selected = payload.get("selected_remediation_id")
+            allowed_ids = {item["id"] for item in remediations}
+            if selected is not None:
+                try:
+                    selected = int(selected)
+                except (TypeError, ValueError):
+                    selected = None
+            if selected not in allowed_ids:
+                selected = None
+            decision = "run" if selected is not None and payload.get("decision") == "run" else "no_action"
+            return {
+                "selected_remediation_id": selected if decision == "run" else None,
+                "decision": decision,
+                "summary": str(payload.get("summary") or fallback["summary"]),
+                "rationale": str(payload.get("rationale") or fallback["rationale"]),
+            }
+        except Exception:
+            return fallback
+
+    def evaluate_validation_output(
+        self,
+        *,
+        validation_name: str,
+        expected_condition: str,
+        observed_output: str,
+        observed_status_code: int | None = None,
+        observed_exit_code: int | None = None,
+    ) -> dict:
+        literal_match = expected_condition.lower() in observed_output.lower()
+        fallback = {
+            "matched": literal_match,
+            "summary": "Validation output was evaluated with fallback literal matching.",
+            "rationale": "The configured expected text was compared directly because model evaluation was unavailable.",
+        }
+        if not self.client:
+            return fallback
+
+        prompt = {
+            "validation_name": validation_name,
+            "expected_condition": expected_condition,
+            "observed_status_code": observed_status_code,
+            "observed_exit_code": observed_exit_code,
+            "observed_output_excerpt": observed_output[:6000],
+            "instructions": [
+                "Return strict JSON only.",
+                "Decide whether the observed output semantically matches the expected_condition.",
+                "The expected_condition may describe an unhealthy or failure state.",
+                "Return matched true when the output supports the expected condition, even if that condition is bad.",
+                "Return matched false when the evidence contradicts the expected condition or is insufficient.",
+            ],
+            "response_schema": {
+                "matched": "boolean",
+                "summary": "string",
+                "rationale": "string",
+            },
+        }
+
+        try:
+            response = self.client.responses.create(
+                model=settings.openai_model,
+                instructions="You are a precise validation-output evaluator for RAVEN. Output strict JSON only.",
+                input=json.dumps(prompt),
+            )
+            payload = _extract_json_payload(response.output_text)
+            return {
+                "matched": bool(payload.get("matched")),
+                "summary": str(payload.get("summary") or "Validation output evaluated."),
+                "rationale": str(payload.get("rationale") or ""),
+            }
+        except Exception:
+            return fallback
+
     def latest_execution_context(self, node: Node, executions: list[ExecutionTask]) -> list[dict]:
         return [
             {

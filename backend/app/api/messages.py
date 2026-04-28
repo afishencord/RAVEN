@@ -3,8 +3,8 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
-from app.models import AIRecommendation, ApprovalDecision, ExecutionTask, Incident, IncidentNote, Node, User
-from app.schemas import MessageIncidentRead
+from app.models import AIRecommendation, ApprovalDecision, ExecutionTask, Incident, IncidentNote, Node, User, ValidationRun
+from app.schemas import MessageIncidentRead, ValidationRunRead
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -39,6 +39,12 @@ def list_messages(
             .order_by(desc(ExecutionTask.queued_at), desc(ExecutionTask.id))
             .all()
         )
+        validation_runs = (
+            db.query(ValidationRun)
+            .filter(ValidationRun.incident_id == incident.id)
+            .order_by(ValidationRun.started_at.asc(), ValidationRun.id.asc())
+            .all()
+        )
         approvals = (
             db.query(ApprovalDecision)
             .filter(ApprovalDecision.incident_id == incident.id)
@@ -53,6 +59,24 @@ def list_messages(
                     node=node,
                     latest_recommendation=latest_recommendation,
                     recommendations=recommendations,
+                    validation_runs=[
+                        ValidationRunRead(
+                            id=run.id,
+                            node_id=run.node_id,
+                            incident_id=run.incident_id,
+                            validation_id=run.validation_id,
+                            validation_name=run.validation.name if run.validation else None,
+                            status=run.status,
+                            matched_expectation=run.matched_expectation,
+                            observed_status_code=run.observed_status_code,
+                            observed_exit_code=run.observed_exit_code,
+                            output=run.output,
+                            error_detail=run.error_detail,
+                            started_at=run.started_at,
+                            finished_at=run.finished_at,
+                        )
+                        for run in validation_runs
+                    ],
                     notes=notes,
                     executions=executions,
                     approvals=approvals,

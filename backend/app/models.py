@@ -42,6 +42,35 @@ class RemediationProfile(TimestampMixin, Base):
     post_action_validation: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class ValidationDefinition(TimestampMixin, Base):
+    __tablename__ = "validation_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validation_type: Mapped[str] = mapped_column(String(32), default="http", index=True)
+    command: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    expected_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expected_exit_code: Mapped[int] = mapped_column(Integer, default=0)
+    expected_response_contains: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=10)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class RemediationDefinition(TimestampMixin, Base):
+    __tablename__ = "remediation_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    command: Mapped[str] = mapped_column(Text)
+    risk_level: Mapped[str] = mapped_column(String(32), default="medium", index=True)
+    execution_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
 class NodeGroup(TimestampMixin, Base):
     __tablename__ = "node_groups"
 
@@ -81,6 +110,48 @@ class Node(TimestampMixin, Base):
     health_checks: Mapped[list["HealthCheckResult"]] = relationship(back_populates="node", cascade="all, delete-orphan")
     incidents: Mapped[list["Incident"]] = relationship(back_populates="node", cascade="all, delete-orphan")
     executions: Mapped[list["ExecutionTask"]] = relationship(back_populates="node", cascade="all, delete-orphan")
+    validation_assignments: Mapped[list["NodeValidationAssignment"]] = relationship(back_populates="node", cascade="all, delete-orphan")
+    remediation_assignments: Mapped[list["NodeRemediationAssignment"]] = relationship(back_populates="node", cascade="all, delete-orphan")
+
+
+class NodeValidationAssignment(TimestampMixin, Base):
+    __tablename__ = "node_validation_assignments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
+    validation_id: Mapped[int] = mapped_column(ForeignKey("validation_definitions.id"), index=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    node: Mapped["Node"] = relationship(back_populates="validation_assignments")
+    validation: Mapped["ValidationDefinition"] = relationship()
+
+
+class NodeRemediationAssignment(TimestampMixin, Base):
+    __tablename__ = "node_remediation_assignments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
+    remediation_id: Mapped[int] = mapped_column(ForeignKey("remediation_definitions.id"), index=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    node: Mapped["Node"] = relationship(back_populates="remediation_assignments")
+    remediation: Mapped["RemediationDefinition"] = relationship()
+
+
+class NodeAutomationEdge(TimestampMixin, Base):
+    __tablename__ = "node_automation_edges"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
+    validation_id: Mapped[int] = mapped_column(ForeignKey("validation_definitions.id"), index=True)
+    remediation_id: Mapped[int] = mapped_column(ForeignKey("remediation_definitions.id"), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    validation: Mapped["ValidationDefinition"] = relationship()
+    remediation: Mapped["RemediationDefinition"] = relationship()
 
 
 class HealthCheckResult(Base):
@@ -98,6 +169,25 @@ class HealthCheckResult(Base):
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
     node: Mapped["Node"] = relationship(back_populates="health_checks")
+
+
+class ValidationRun(Base):
+    __tablename__ = "validation_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
+    incident_id: Mapped[int | None] = mapped_column(ForeignKey("incidents.id"), nullable=True, index=True)
+    validation_id: Mapped[int] = mapped_column(ForeignKey("validation_definitions.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    matched_expectation: Mapped[bool] = mapped_column(Boolean, default=False)
+    observed_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    observed_exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    validation: Mapped["ValidationDefinition"] = relationship()
 
 
 class Incident(TimestampMixin, Base):

@@ -243,6 +243,156 @@ class RemediationProfileRead(BaseModel):
     updated_at: datetime
 
 
+class ValidationDefinitionBase(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = None
+    validation_type: str = "http"
+    command: str | None = None
+    url: str | None = None
+    path: str | None = None
+    expected_status_code: int | None = 200
+    expected_exit_code: int = 0
+    expected_response_contains: str | None = None
+    timeout_seconds: int = 10
+    is_enabled: bool = True
+
+
+class ValidationDefinitionCreate(ValidationDefinitionBase):
+    pass
+
+
+class ValidationDefinitionUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    validation_type: str | None = None
+    command: str | None = None
+    url: str | None = None
+    path: str | None = None
+    expected_status_code: int | None = None
+    expected_exit_code: int | None = None
+    expected_response_contains: str | None = None
+    timeout_seconds: int | None = None
+    is_enabled: bool | None = None
+
+
+class ValidationDefinitionRead(ValidationDefinitionBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    assigned_node_count: int = 0
+    last_run_status: str | None = None
+    last_run_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RemediationDefinitionBase(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = None
+    command: str = Field(min_length=1)
+    risk_level: str = "medium"
+    execution_mode: str | None = None
+    is_enabled: bool = True
+
+
+class RemediationDefinitionCreate(RemediationDefinitionBase):
+    pass
+
+
+class RemediationDefinitionUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    command: str | None = None
+    risk_level: str | None = None
+    execution_mode: str | None = None
+    is_enabled: bool | None = None
+
+
+class RemediationDefinitionRead(RemediationDefinitionBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    assigned_node_count: int = 0
+    last_run_status: str | None = None
+    last_run_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ValidationRunRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    node_id: int
+    incident_id: int | None
+    validation_id: int
+    validation_name: str | None = None
+    status: str
+    matched_expectation: bool
+    observed_status_code: int | None
+    observed_exit_code: int | None
+    output: str | None
+    error_detail: str | None
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class NodeValidationAssignmentRead(BaseModel):
+    id: int
+    node_id: int
+    validation_id: int
+    is_enabled: bool
+    sort_order: int
+    validation: ValidationDefinitionRead
+
+
+class NodeRemediationAssignmentRead(BaseModel):
+    id: int
+    node_id: int
+    remediation_id: int
+    is_enabled: bool
+    sort_order: int
+    remediation: RemediationDefinitionRead
+
+
+class NodeAutomationEdgeRead(BaseModel):
+    id: int
+    node_id: int
+    validation_id: int
+    remediation_id: int
+    is_enabled: bool
+    sort_order: int
+
+
+class NodeAutomationEdgeUpdate(BaseModel):
+    validation_id: int
+    remediation_id: int
+
+
+class NodeAutomationAssignmentsRead(BaseModel):
+    node_id: int
+    validations: list[NodeValidationAssignmentRead]
+    remediations: list[NodeRemediationAssignmentRead]
+    edges: list[NodeAutomationEdgeRead] = Field(default_factory=list)
+
+
+class NodeAutomationAssignmentsUpdate(BaseModel):
+    validation_ids: list[int] = Field(default_factory=list)
+    remediation_ids: list[int] = Field(default_factory=list)
+    edges: list[NodeAutomationEdgeUpdate] = Field(default_factory=list)
+
+
+class ValidationTestRequest(BaseModel):
+    node_id: int | None = None
+
+
+class RemediationPreviewRead(BaseModel):
+    remediation_id: int
+    command: str
+    execution_mode: str | None
+    risk_level: str
+
+
 class ExecutionTaskRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -315,6 +465,7 @@ class MessageIncidentRead(BaseModel):
     node: NodeRead
     latest_recommendation: AIRecommendationRead | None
     recommendations: list[AIRecommendationRead]
+    validation_runs: list[ValidationRunRead] = Field(default_factory=list)
     notes: list[IncidentNoteRead]
     executions: list[ExecutionTaskRead]
     approvals: list[ApprovalDecisionRead]

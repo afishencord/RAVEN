@@ -7,11 +7,12 @@ import { AppShell } from "@/components/app-shell";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch, requireSession } from "@/lib/api";
 import { useLiveRefresh } from "@/lib/live-updates";
-import { ApprovalDecision, CommandProposal, ExecutionTask, IncidentNote, MessageIncident, Recommendation, User } from "@/lib/types";
+import { ApprovalDecision, CommandProposal, ExecutionTask, IncidentNote, MessageIncident, Recommendation, User, ValidationRun } from "@/lib/types";
 
 type MessageView = "active" | "archived";
 type TimelineEntry =
   | { id: string; at: string; kind: "incident"; message: MessageIncident }
+  | { id: string; at: string; kind: "validation"; validation: ValidationRun }
   | { id: string; at: string; kind: "recommendation"; recommendation: Recommendation; isLatest: boolean; canAct: boolean; incidentId: number }
   | { id: string; at: string; kind: "execution"; execution: ExecutionTask }
   | { id: string; at: string; kind: "approval"; approval: ApprovalDecision }
@@ -61,6 +62,15 @@ function buildTimeline(message: MessageIncident, operatorCanAct: boolean) {
       isLatest: recommendation.id === latestId,
       canAct: commandActionsEnabled && recommendation.id === latestId,
       incidentId: message.incident.id,
+    });
+  }
+
+  for (const validation of message.validation_runs ?? []) {
+    entries.push({
+      id: `validation:${validation.id}`,
+      at: validation.finished_at ?? validation.started_at,
+      kind: "validation",
+      validation,
     });
   }
 
@@ -554,12 +564,36 @@ function TimelineBubble({
     );
   }
 
-  if (entry.kind === "approval") {
+  if (entry.kind === "validation") {
     return (
-      <div className="ml-auto max-w-2xl rounded-3xl bg-ink p-4 text-white dark:bg-ember">
-        <p className="text-xs uppercase tracking-[0.2em] text-white/70">Operator decision</p>
+      <div className="max-w-3xl rounded-3xl border border-sky-100 bg-white p-5 dark:border-sky-950 dark:bg-[#050814]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs uppercase tracking-[0.2em] text-sky-700 dark:text-sky-300">Assigned validation</p>
+          <StatusBadge status={entry.validation.status} />
+        </div>
+        <p className="mt-3 text-sm font-semibold">{entry.validation.validation_name ?? `Validation ${entry.validation.validation_id}`}</p>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          Expected output {entry.validation.matched_expectation ? "matched" : "did not match"} before remediation selection.
+        </p>
+        <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+          HTTP {entry.validation.observed_status_code ?? "n/a"} | Exit {entry.validation.observed_exit_code ?? "n/a"} | {new Date(entry.validation.started_at).toLocaleString()}
+        </p>
+        {entry.validation.output || entry.validation.error_detail ? (
+          <pre className="mt-3 max-h-48 overflow-auto rounded-2xl bg-panel p-3 text-xs text-slate-700 dark:bg-[#0B1020] dark:text-slate-200">
+            {entry.validation.output ?? entry.validation.error_detail}
+          </pre>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (entry.kind === "approval") {
+    const automatic = entry.approval.decision === "auto_approved";
+    return (
+      <div className={`ml-auto max-w-2xl rounded-3xl p-4 text-white ${automatic ? "bg-[#2B195D]" : "bg-ink dark:bg-ember"}`}>
+        <p className="text-xs uppercase tracking-[0.2em] text-white/70">{automatic ? "Automated gate" : "Operator decision"}</p>
         <p className="mt-2 text-sm">
-          {entry.approval.decision === "approved" ? "Approved" : "Rejected"} proposal {entry.approval.action_key}.
+          {automatic ? "Auto-approved" : entry.approval.decision === "approved" ? "Approved" : "Rejected"} proposal {entry.approval.action_key}.
         </p>
         {entry.approval.note ? <p className="mt-2 text-sm text-white/80">{entry.approval.note}</p> : null}
       </div>
@@ -567,13 +601,18 @@ function TimelineBubble({
   }
 
   if (entry.kind === "execution") {
+    const automatic = entry.execution.parameters?.automation_source === "validation_gate";
+    const eligibility = Array.isArray(entry.execution.parameters?.automation_eligibility) ? entry.execution.parameters.automation_eligibility : [];
+    const eligibleCount = eligibility.filter((item) => typeof item === "object" && item !== null && Boolean((item as Record<string, unknown>).eligible)).length;
     return (
       <div className="max-w-4xl rounded-3xl bg-slate-950 p-5 text-white">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-300">Command output</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-300">{automatic ? "Automated command output" : "Command output"}</p>
           <StatusBadge status={entry.execution.status} />
         </div>
         <p className="mt-3 text-sm font-semibold">{entry.execution.proposal_title ?? entry.execution.proposal_id ?? "Approved command"}</p>
+        {automatic && entry.execution.parameters?.llm_gate_summary ? <p className="mt-2 text-sm text-purple-200">{String(entry.execution.parameters.llm_gate_summary)}</p> : null}
+        {automatic && eligibility.length ? <p className="mt-2 text-xs text-slate-300">{eligibleCount} eligible remediation path{eligibleCount === 1 ? "" : "s"} from playbook validation.</p> : null}
         <pre className="mt-3 overflow-auto rounded-2xl bg-black p-3 text-xs text-slate-100">{entry.execution.approved_command ?? entry.execution.command_preview}</pre>
         <p className="mt-3 text-sm text-slate-300">
           Exit code {entry.execution.exit_code ?? "pending"} | Post-check {entry.execution.post_validation_status ?? "pending"}
