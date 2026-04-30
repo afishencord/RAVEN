@@ -57,6 +57,121 @@ class CredentialRead(CredentialBase):
     updated_at: datetime
 
 
+class FlockPolicyBase(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = None
+    is_default: bool = False
+    is_enabled: bool = True
+    heartbeat_interval_seconds: int = 10
+    task_timeout_seconds: int = 60
+    command_allowlist: list[str] = Field(default_factory=list)
+
+
+class FlockPolicyCreate(FlockPolicyBase):
+    pass
+
+
+class FlockPolicyUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    is_default: bool | None = None
+    is_enabled: bool | None = None
+    heartbeat_interval_seconds: int | None = None
+    task_timeout_seconds: int | None = None
+    command_allowlist: list[str] | None = None
+
+
+class FlockPolicyRead(FlockPolicyBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class FlockAgentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: str
+    name: str
+    hostname: str
+    platform: str
+    architecture: str
+    version: str
+    policy_id: int | None
+    policy_name: str | None = None
+    enrollment_token_id: int | None
+    status: str
+    last_seen_at: datetime | None
+    enrolled_at: datetime
+    metadata_json: dict
+    pending_task_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class FlockAgentUpdate(BaseModel):
+    policy_id: int | None = None
+    status: str | None = None
+
+
+class FlockEnrollmentRequest(BaseModel):
+    enrollment_token: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=128)
+    hostname: str = Field(min_length=1, max_length=255)
+    platform: str = "linux"
+    architecture: str = "unknown"
+    version: str = "dev"
+    metadata_json: dict = Field(default_factory=dict)
+
+
+class FlockEnrollmentResponse(BaseModel):
+    agent_id: str
+    agent_token: str
+    policy: FlockPolicyRead
+
+
+class FlockHeartbeatRequest(BaseModel):
+    hostname: str | None = None
+    platform: str | None = None
+    architecture: str | None = None
+    version: str | None = None
+    metadata_json: dict = Field(default_factory=dict)
+
+
+class FlockHeartbeatResponse(BaseModel):
+    status: str
+    policy: FlockPolicyRead
+
+
+class FlockClaimedTaskRead(BaseModel):
+    id: int
+    command: str
+    timeout_seconds: int
+
+
+class FlockTaskResultRequest(BaseModel):
+    exit_code: int
+    output: str = ""
+
+
+class FlockDispatchRequest(BaseModel):
+    target: str = Field(min_length=1)
+    command: str = Field(min_length=1)
+    execution_task_id: int | None = None
+    timeout_seconds: int = 60
+
+
+class FlockDispatchResponse(BaseModel):
+    status: str
+    exit_code: int
+    output: str
+    agent_id: str | None = None
+    task_id: int | None = None
+
+
 class NodeBase(BaseModel):
     name: str
     description: str | None = None

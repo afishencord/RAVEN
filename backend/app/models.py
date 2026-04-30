@@ -330,3 +330,70 @@ class Credential(TimestampMixin, Base):
     secret_value: Mapped[str] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class FlockPolicy(TimestampMixin, Base):
+    __tablename__ = "flock_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    heartbeat_interval_seconds: Mapped[int] = mapped_column(Integer, default=10)
+    task_timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    command_allowlist: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
+class FlockEnrollmentToken(TimestampMixin, Base):
+    __tablename__ = "flock_enrollment_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    token_hash: Mapped[str] = mapped_column(Text)
+    policy_id: Mapped[int | None] = mapped_column(ForeignKey("flock_policies.id"), nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    policy: Mapped["FlockPolicy | None"] = relationship()
+
+
+class FlockAgent(TimestampMixin, Base):
+    __tablename__ = "flock_agents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128), index=True)
+    hostname: Mapped[str] = mapped_column(String(255))
+    platform: Mapped[str] = mapped_column(String(64), default="linux")
+    architecture: Mapped[str] = mapped_column(String(64), default="unknown")
+    version: Mapped[str] = mapped_column(String(64), default="dev")
+    token_hash: Mapped[str] = mapped_column(Text)
+    policy_id: Mapped[int | None] = mapped_column(ForeignKey("flock_policies.id"), nullable=True)
+    enrollment_token_id: Mapped[int | None] = mapped_column(ForeignKey("flock_enrollment_tokens.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="enrolled", index=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    policy: Mapped["FlockPolicy | None"] = relationship()
+    enrollment_token: Mapped["FlockEnrollmentToken | None"] = relationship()
+    tasks: Mapped[list["FlockTask"]] = relationship(back_populates="agent", cascade="all, delete-orphan")
+
+
+class FlockTask(Base):
+    __tablename__ = "flock_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("flock_agents.id"), index=True)
+    execution_task_id: Mapped[int | None] = mapped_column(ForeignKey("execution_tasks.id"), nullable=True, index=True)
+    command: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    agent: Mapped["FlockAgent"] = relationship(back_populates="tasks")

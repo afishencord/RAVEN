@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     monitor_poll_seconds: int = 5
     runner_poll_seconds: int = 5
     embedded_monitoring: bool = True
+    flock_server_url: str = "http://flock:8000/api/flock"
+    flock_internal_token: str = "dev-flock-internal-token"
+    flock_dispatch_timeout_seconds: int = 90
+    flock_result_poll_seconds: int = 2
+    flock_agent_state_path: str = "/data/flock-agent-state.json"
+    flock_enrollment_token: str | None = None
+    flock_agent_name: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",

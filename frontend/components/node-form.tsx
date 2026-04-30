@@ -3,10 +3,12 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { GitBranch, Info, Plus, Search, Trash2, X } from "lucide-react";
 
-import { CredentialRecord, NodeAutomationEdgeInput, NodeRecord, RemediationDefinition, ValidationDefinition } from "@/lib/types";
+import { CredentialRecord, FlockAgent, FlockPolicy, NodeAutomationEdgeInput, NodeRecord, RemediationDefinition, ValidationDefinition } from "@/lib/types";
 
 type Props = {
   credentials: CredentialRecord[];
+  flockAgents?: FlockAgent[];
+  flockPolicies?: FlockPolicy[];
   validations?: ValidationDefinition[];
   remediations?: RemediationDefinition[];
   initialValidationIds?: number[];
@@ -42,6 +44,8 @@ const defaultValues = {
 
 export function NodeForm({
   credentials,
+  flockAgents = [],
+  flockPolicies = [],
   validations = [],
   remediations = [],
   initialValidationIds = [],
@@ -77,6 +81,21 @@ export function NodeForm({
   const [automationEdges, setAutomationEdges] = useState<NodeAutomationEdgeInput[]>(() => initialAutomationEdges);
   const [showPlaybookBuilder, setShowPlaybookBuilder] = useState(false);
   const [saving, setSaving] = useState(false);
+  const activeExecutionMode = form.execution_mode as "runner" | "agent";
+
+  function setExecutionMode(mode: "runner" | "agent") {
+    setForm((current) => {
+      const nextTarget =
+        mode === "agent" && current.execution_target === defaultValues.execution_target
+          ? flockAgents[0]
+            ? `flock:${flockAgents[0].agent_id}`
+            : "flock:flock-test"
+          : mode === "runner" && current.execution_target.startsWith("flock:")
+            ? defaultValues.execution_target
+            : current.execution_target;
+      return { ...current, execution_mode: mode, execution_target: nextTarget };
+    });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -102,6 +121,48 @@ export function NodeForm({
 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
+      <div className="md:col-span-2 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex flex-wrap gap-1">
+          {(["runner", "agent"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={`border-b-2 px-5 py-3 text-sm font-semibold capitalize transition ${
+                activeExecutionMode === mode
+                  ? "border-[#7C3AED] text-[#7C3AED] dark:text-purple-300"
+                  : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
+              }`}
+              onClick={() => setExecutionMode(mode)}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeExecutionMode === "agent" ? (
+        <section className="md:col-span-2 rounded-[1.5rem] border border-slate-200 bg-panel p-4 dark:border-slate-800 dark:bg-[#0B1020]">
+          <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Linux/Unix Flock enrollment</p>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Start the local test agent with Docker Compose, then select the enrolled agent as this node's target.
+              </p>
+              <code className="mt-3 block overflow-x-auto rounded-xl bg-white px-3 py-2 text-xs text-slate-700 dark:bg-[#050814] dark:text-slate-200">
+                docker compose up --build -d raven-flock flock-test
+              </code>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Available policy</p>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {(flockPolicies.find((policy) => policy.is_default) ?? flockPolicies[0])?.name ?? "Default Linux/Unix Policy"}
+              </p>
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{flockAgents.length} enrolled agents available.</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {[
         ["Name", "name"],
         ["Environment", "environment"],
@@ -114,7 +175,6 @@ export function NodeForm({
         ["Interval Seconds", "check_interval_seconds"],
         ["Timeout Seconds", "timeout_seconds"],
         ["Retry Count", "retry_count"],
-        ["Execution Target", "execution_target"],
         ["Folder", "group_name"],
       ].map(([label, key]) => (
         <label key={key} className="text-sm text-slate-700 dark:text-slate-200">
@@ -127,6 +187,33 @@ export function NodeForm({
         </label>
       ))}
 
+      {activeExecutionMode === "agent" && flockAgents.length ? (
+        <label className="text-sm text-slate-700 dark:text-slate-200">
+          <span className="mb-2 block font-medium">Flock Agent</span>
+          <select
+            value={form.execution_target}
+            onChange={(event) => setForm((current) => ({ ...current, execution_target: event.target.value }))}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
+          >
+            {flockAgents.map((agent) => (
+              <option key={agent.id} value={`flock:${agent.agent_id}`}>
+                {agent.name} ({agent.hostname})
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label className="text-sm text-slate-700 dark:text-slate-200">
+          <span className="mb-2 block font-medium">{activeExecutionMode === "agent" ? "Flock Target" : "Execution Target"}</span>
+          <input
+            value={form.execution_target}
+            onChange={(event) => setForm((current) => ({ ...current, execution_target: event.target.value }))}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
+            placeholder={activeExecutionMode === "agent" ? "flock:flock-test" : "local:raven-backend"}
+          />
+        </label>
+      )}
+
       <label className="text-sm text-slate-700 dark:text-slate-200">
         <span className="mb-2 block font-medium">Health Check Type</span>
         <select
@@ -138,18 +225,6 @@ export function NodeForm({
           <option value="http">http</option>
           <option value="https">https</option>
           <option value="api">api</option>
-        </select>
-      </label>
-
-      <label className="text-sm text-slate-700 dark:text-slate-200">
-        <span className="mb-2 block font-medium">Execution Mode</span>
-        <select
-          value={form.execution_mode}
-          onChange={(event) => setForm((current) => ({ ...current, execution_mode: event.target.value }))}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
-        >
-          <option value="runner">runner</option>
-          <option value="agent">agent</option>
         </select>
       </label>
 

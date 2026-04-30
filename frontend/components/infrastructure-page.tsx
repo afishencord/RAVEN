@@ -10,10 +10,10 @@ import { NodeForm } from "@/components/node-form";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch, requireSession } from "@/lib/api";
 import { useLiveRefresh } from "@/lib/live-updates";
-import { CredentialRecord, NodeAutomationAssignments, NodeAutomationEdgeInput, NodeGroupRecord, NodeRecord, RemediationDefinition, User, ValidationDefinition } from "@/lib/types";
+import { CredentialRecord, FlockAgent, FlockPolicy, NodeAutomationAssignments, NodeAutomationEdgeInput, NodeGroupRecord, NodeRecord, RemediationDefinition, User, ValidationDefinition } from "@/lib/types";
 
 const filters = ["all", "healthy", "degraded", "down", "disabled"] as const;
-const tabs = ["nodes", "fleet"] as const;
+const tabs = ["nodes", "flock"] as const;
 
 type InfrastructureTab = (typeof tabs)[number];
 type NodeFolder = {
@@ -69,16 +69,45 @@ function IconButton({ label, className, children, onClick }: { label: string; cl
   );
 }
 
-function FleetSnapshot({ nodes }: { nodes: NodeRecord[] }) {
+function timeAgo(value?: string | null) {
+  if (!value) {
+    return "Never";
+  }
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+
+function FlockWorkspace({
+  nodes,
+  agents,
+  policies,
+  onAgentPolicyChange,
+  onPolicyUpdate,
+}: {
+  nodes: NodeRecord[];
+  agents: FlockAgent[];
+  policies: FlockPolicy[];
+  onAgentPolicyChange: (agentId: number, policyId: number) => void;
+  onPolicyUpdate: (policyId: number, payload: Partial<FlockPolicy>) => void;
+}) {
   return (
-    <section className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
-      <h3 className="text-xl font-semibold">Fleet snapshot</h3>
+    <div className="space-y-6">
+      <section className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
+      <h3 className="text-xl font-semibold">Flock snapshot</h3>
       <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           ["Runner Mode", nodes.filter((node) => node.execution_mode === "runner").length.toString()],
-          ["Agent Mode", nodes.filter((node) => node.execution_mode === "agent").length.toString()],
-          ["With Context", nodes.filter((node) => node.context_text?.trim()).length.toString()],
-          ["With Credentials", nodes.filter((node) => node.credential_id).length.toString()],
+          ["Flock Agent Mode", nodes.filter((node) => node.execution_mode === "agent").length.toString()],
+          ["Enrolled Agents", agents.length.toString()],
+          ["Policies", policies.length.toString()],
         ].map(([label, value]) => (
           <div key={label} className="rounded-3xl bg-panel px-5 py-4 dark:bg-[#0B1020]">
             <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">{label}</p>
@@ -86,7 +115,115 @@ function FleetSnapshot({ nodes }: { nodes: NodeRecord[] }) {
           </div>
         ))}
       </div>
-    </section>
+      </section>
+
+      <section className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
+        <h3 className="text-xl font-semibold">Flock agents</h3>
+        <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200 dark:border-slate-800">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-panel dark:bg-[#0B1020]">
+              <tr className="text-left text-slate-500 dark:text-slate-300">
+                <th className="px-4 py-3 font-medium">Agent</th>
+                <th className="px-4 py-3 font-medium">Host</th>
+                <th className="px-4 py-3 font-medium">Policy</th>
+                <th className="px-4 py-3 font-medium">Heartbeat</th>
+                <th className="px-4 py-3 font-medium">Tasks</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-[#050814]">
+              {agents.map((agent) => (
+                <tr key={agent.id}>
+                  <td className="px-4 py-4">
+                    <p className="font-semibold text-ink dark:text-white">{agent.name}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{agent.agent_id}</p>
+                  </td>
+                  <td className="px-4 py-4 text-slate-600 dark:text-slate-300">
+                    <p>{agent.hostname}</p>
+                    <p className="text-xs">{agent.platform} / {agent.architecture}</p>
+                  </td>
+                  <td className="px-4 py-4 text-slate-600 dark:text-slate-300">
+                    <select
+                      value={agent.policy_id ?? ""}
+                      onChange={(event) => onAgentPolicyChange(agent.id, Number(event.target.value))}
+                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
+                    >
+                      {policies.map((policy) => (
+                        <option key={policy.id} value={policy.id}>
+                          {policy.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-4 py-4">
+                    <StatusBadge status={agent.status === "online" ? "healthy" : "degraded"} />
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{timeAgo(agent.last_seen_at)}</p>
+                  </td>
+                  <td className="px-4 py-4 text-slate-600 dark:text-slate-300">{agent.pending_task_count} pending</td>
+                </tr>
+              ))}
+              {!agents.length ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                    No Flock agents are enrolled yet.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-[#E5E7EB] bg-white p-6 shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
+        <h3 className="text-xl font-semibold">Flock policies</h3>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {policies.map((policy) => (
+            <div key={policy.id} className="rounded-[1.5rem] border border-slate-200 bg-panel p-4 dark:border-slate-800 dark:bg-[#0B1020]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-ink dark:text-white">{policy.name}</p>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{policy.description ?? "No policy description."}</p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-[#050814] dark:text-slate-300">
+                  {policy.is_default ? "Default" : policy.is_enabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Agents</p>
+                  <p className="mt-1 text-lg font-semibold">{policy.agent_count}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Heartbeat</p>
+                  <p className="mt-1 text-lg font-semibold">{policy.heartbeat_interval_seconds}s</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Timeout</p>
+                  <p className="mt-1 text-lg font-semibold">{policy.task_timeout_seconds}s</p>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={policy.is_default}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-ember hover:text-ember disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-[#050814] dark:text-slate-200"
+                  onClick={() => onPolicyUpdate(policy.id, { is_default: true })}
+                >
+                  Set default
+                </button>
+                <button
+                  type="button"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-ember hover:text-ember dark:border-slate-800 dark:bg-[#050814] dark:text-slate-200"
+                  onClick={() => onPolicyUpdate(policy.id, { is_enabled: !policy.is_enabled })}
+                >
+                  {policy.is_enabled ? "Disable" : "Enable"}
+                </button>
+              </div>
+            </div>
+          ))}
+          {!policies.length ? <p className="text-sm text-slate-500 dark:text-slate-400">No Flock policies are configured.</p> : null}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -98,6 +235,8 @@ export function InfrastructurePage() {
   const [credentials, setCredentials] = useState<CredentialRecord[]>([]);
   const [validations, setValidations] = useState<ValidationDefinition[]>([]);
   const [remediations, setRemediations] = useState<RemediationDefinition[]>([]);
+  const [flockAgents, setFlockAgents] = useState<FlockAgent[]>([]);
+  const [flockPolicies, setFlockPolicies] = useState<FlockPolicy[]>([]);
   const [formValidationIds, setFormValidationIds] = useState<number[]>([]);
   const [formRemediationIds, setFormRemediationIds] = useState<number[]>([]);
   const [formAutomationEdges, setFormAutomationEdges] = useState<NodeAutomationEdgeInput[]>([]);
@@ -117,12 +256,21 @@ export function InfrastructurePage() {
   const [lastSynced, setLastSynced] = useState<string | null>(null);
 
   async function refreshInfrastructure() {
-    const [nodeData, groupData] = await Promise.all([
+    const requests: Promise<unknown>[] = [
       apiFetch<NodeRecord[]>("/nodes"),
       apiFetch<NodeGroupRecord[]>("/node-groups"),
-    ]);
-    setNodes(nodeData);
-    setNodeGroups(groupData);
+    ];
+    if (user?.role === "admin") {
+      requests.push(apiFetch<FlockAgent[]>("/flock/agents"));
+      requests.push(apiFetch<FlockPolicy[]>("/flock/policies"));
+    }
+    const [nodeData, groupData, agentData, policyData] = await Promise.all(requests);
+    setNodes(nodeData as NodeRecord[]);
+    setNodeGroups(groupData as NodeGroupRecord[]);
+    if (user?.role === "admin") {
+      setFlockAgents((agentData as FlockAgent[]) ?? []);
+      setFlockPolicies((policyData as FlockPolicy[]) ?? []);
+    }
     setLastSynced(new Date().toISOString());
   }
 
@@ -139,14 +287,18 @@ export function InfrastructurePage() {
           requests.push(apiFetch<CredentialRecord[]>("/credentials"));
           requests.push(apiFetch<ValidationDefinition[]>("/validations"));
           requests.push(apiFetch<RemediationDefinition[]>("/remediations"));
+          requests.push(apiFetch<FlockAgent[]>("/flock/agents"));
+          requests.push(apiFetch<FlockPolicy[]>("/flock/policies"));
         }
         Promise.all(requests)
-          .then(([nodeData, groupData, credentialData, validationData, remediationData]) => {
+          .then(([nodeData, groupData, credentialData, validationData, remediationData, agentData, policyData]) => {
             setNodes(nodeData as NodeRecord[]);
             setNodeGroups(groupData as NodeGroupRecord[]);
             setCredentials((credentialData as CredentialRecord[]) ?? []);
             setValidations((validationData as ValidationDefinition[]) ?? []);
             setRemediations((remediationData as RemediationDefinition[]) ?? []);
+            setFlockAgents((agentData as FlockAgent[]) ?? []);
+            setFlockPolicies((policyData as FlockPolicy[]) ?? []);
             setLastSynced(new Date().toISOString());
           })
           .catch((err) => setError(err instanceof Error ? err.message : "Failed to load infrastructure"))
@@ -246,6 +398,41 @@ export function InfrastructurePage() {
       setError(err instanceof Error ? err.message : "Failed to create folder");
     } finally {
       setCreatingFolder(false);
+    }
+  }
+
+  async function updateFlockAgentPolicy(agentId: number, policyId: number) {
+    setError("");
+    try {
+      const updated = await apiFetch<FlockAgent>(`/flock/agents/${agentId}`, {
+        method: "PUT",
+        body: JSON.stringify({ policy_id: policyId }),
+      });
+      setFlockAgents((current) => current.map((agent) => (agent.id === updated.id ? updated : agent)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update Flock agent");
+    }
+  }
+
+  async function updateFlockPolicy(policyId: number, payload: Partial<FlockPolicy>) {
+    setError("");
+    try {
+      const updated = await apiFetch<FlockPolicy>(`/flock/policies/${policyId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      setFlockPolicies((current) =>
+        current
+          .map((policy) => {
+            if (policy.id === updated.id) {
+              return updated;
+            }
+            return payload.is_default ? { ...policy, is_default: false } : policy;
+          })
+          .sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name)),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update Flock policy");
     }
   }
 
@@ -597,7 +784,13 @@ export function InfrastructurePage() {
             </div>
           </section>
         ) : (
-          <FleetSnapshot nodes={nodes} />
+          <FlockWorkspace
+            nodes={nodes}
+            agents={flockAgents}
+            policies={flockPolicies}
+            onAgentPolicyChange={(agentId, policyId) => { void updateFlockAgentPolicy(agentId, policyId); }}
+            onPolicyUpdate={(policyId, payload) => { void updateFlockPolicy(policyId, payload); }}
+          />
         )}
       </div>
 
@@ -625,6 +818,8 @@ export function InfrastructurePage() {
             <NodeForm
               key={editing ? `edit:${editing.id}:${formValidationIds.join(",")}:${formRemediationIds.join(",")}:${formAutomationEdges.map((edge) => `${edge.validation_id}-${edge.remediation_id}`).join(",")}` : "create"}
               credentials={credentials}
+              flockAgents={flockAgents}
+              flockPolicies={flockPolicies}
               validations={validations}
               remediations={remediations}
               initialValidationIds={formValidationIds}

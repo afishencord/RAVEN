@@ -1,10 +1,12 @@
 from sqlalchemy.orm import Session
 
 from app.auth import get_password_hash
-from app.models import Credential, Node, RemediationProfile, User
+from app.config import get_settings
+from app.models import Credential, FlockEnrollmentToken, FlockPolicy, Node, RemediationProfile, User
 
 
 def seed_data(db: Session) -> None:
+    settings = get_settings()
     if not db.query(User).first():
         db.add_all(
             [
@@ -39,6 +41,37 @@ def seed_data(db: Session) -> None:
         )
         db.add(credential)
         db.flush()
+
+    flock_policy = db.query(FlockPolicy).filter(FlockPolicy.name == "Default Linux/Unix Policy").first()
+    if not flock_policy:
+        flock_policy = FlockPolicy(
+            name="Default Linux/Unix Policy",
+            description="Default policy for Linux/Unix Flock agents enrolled through the local development workflow.",
+            is_default=True,
+            is_enabled=True,
+            heartbeat_interval_seconds=10,
+            task_timeout_seconds=60,
+            command_allowlist=[],
+        )
+        db.add(flock_policy)
+        db.flush()
+    else:
+        flock_policy.is_default = True
+
+    for policy in db.query(FlockPolicy).filter(FlockPolicy.id != flock_policy.id, FlockPolicy.is_default.is_(True)).all():
+        policy.is_default = False
+
+    enrollment_secret = settings.flock_enrollment_token or "dev-flock-enrollment-token"
+    enrollment_token = db.query(FlockEnrollmentToken).filter(FlockEnrollmentToken.name == "local-linux-unix-enrollment").first()
+    if not enrollment_token:
+        db.add(
+            FlockEnrollmentToken(
+                name="local-linux-unix-enrollment",
+                token_hash=get_password_hash(enrollment_secret),
+                policy_id=flock_policy.id,
+                is_enabled=True,
+            )
+        )
 
     defaults = {
         "Marketing Web": {

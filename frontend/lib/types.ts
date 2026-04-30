@@ -55,6 +55,40 @@ export type NodeGroupRecord = {
   updated_at: string;
 };
 
+export type FlockPolicy = {
+  id: number;
+  name: string;
+  description?: string | null;
+  is_default: boolean;
+  is_enabled: boolean;
+  heartbeat_interval_seconds: number;
+  task_timeout_seconds: number;
+  command_allowlist: string[];
+  agent_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FlockAgent = {
+  id: number;
+  agent_id: string;
+  name: string;
+  hostname: string;
+  platform: string;
+  architecture: string;
+  version: string;
+  policy_id?: number | null;
+  policy_name?: string | null;
+  enrollment_token_id?: number | null;
+  status: string;
+  last_seen_at?: string | null;
+  enrolled_at: string;
+  metadata_json: Record<string, unknown>;
+  pending_task_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type MetricBreakdownItem = {
   label: string;
   value: number;

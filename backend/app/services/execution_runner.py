@@ -297,7 +297,7 @@ class RunnerDaemon:
         task.started_at = utcnow()
         db.commit()
 
-        exit_code, output = self._dispatch(node, task.approved_command, credential)
+        exit_code, output = self._dispatch(node, task.approved_command, credential, task.id)
         task.exit_code = exit_code
         task.output = output[:8000]
         task.finished_at = utcnow()
@@ -309,9 +309,11 @@ class RunnerDaemon:
         _create_follow_up_recommendation(db, node, incident, task, health_row.status)
         db.commit()
 
-    def _dispatch(self, node: Node, command: str, credential: Credential | None) -> tuple[int, str]:
+    def _dispatch(self, node: Node, command: str, credential: Credential | None, execution_task_id: int) -> tuple[int, str]:
         if node.execution_mode == "agent":
-            return self._run_agent(node.execution_target, command, credential)
+            if node.execution_target.startswith(("http://", "https://")):
+                return self._run_agent(node.execution_target, command, credential)
+            return self._run_flock(node.execution_target, command, execution_task_id)
 
         parsed = parse_target(node.execution_target)
         if parsed.transport == "ssh" and parsed.location:
@@ -319,6 +321,26 @@ class RunnerDaemon:
         if parsed.transport == "api" and parsed.location:
             return self._run_api(parsed.location, parsed.subject, command, credential)
         return self._run_subprocess(shlex.split(command))
+
+    def _run_flock(self, target: str, command: str, execution_task_id: int | None = None) -> tuple[int, str]:
+        try:
+            response = httpx.post(
+                settings.flock_server_url.rstrip("/") + "/internal/dispatch",
+                json={
+                    "target": target,
+                    "command": command,
+                    "execution_task_id": execution_task_id,
+                    "timeout_seconds": settings.flock_dispatch_timeout_seconds,
+                },
+                headers={"X-Flock-Internal-Token": settings.flock_internal_token},
+                timeout=float(settings.flock_dispatch_timeout_seconds + 20),
+            )
+            if not response.is_success:
+                return response.status_code, response.text
+            payload = response.json()
+            return int(payload.get("exit_code", 1)), payload.get("output", "")
+        except Exception as exc:
+            return 1, json.dumps({"error": str(exc)})
 
     def _run_subprocess(self, command: list[str]) -> tuple[int, str]:
         try:

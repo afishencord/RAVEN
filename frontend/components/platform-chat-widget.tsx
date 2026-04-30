@@ -35,6 +35,7 @@ const PLATFORM_TERMS = [
   "execution",
   "failure",
   "fleet",
+  "flock",
   "health",
   "healthy",
   "incident",
@@ -170,7 +171,7 @@ function answerNodeQuestion(snapshot: PlatformSnapshot) {
     .map((node) => `${node.name}: ${titleCase(node.current_status)} in ${node.environment}${node.group_name ? `, group ${node.group_name}` : ""}`);
 
   return [
-    `Fleet status by node state: ${statusCounts}.`,
+    `Flock status by node state: ${statusCounts}.`,
     `Environment distribution: ${environmentCounts}.`,
     `Grouping: ${groupCounts}.`,
     `Recent node records:\n${formatList(recentNodes, "No nodes are configured yet.")}`,
@@ -232,7 +233,7 @@ function answerPrompt(prompt: string, snapshot: PlatformSnapshot) {
   if (/\b(license|licensing)\b/.test(normalized)) {
     return answerLicenseQuestion(snapshot);
   }
-  if (/\b(node|nodes|fleet|infrastructure|network|environment|group|cluster|enabled|disabled|health|healthy|status)\b/.test(normalized)) {
+  if (/\b(node|nodes|fleet|flock|infrastructure|network|environment|group|cluster|enabled|disabled|health|healthy|status)\b/.test(normalized)) {
     return answerNodeQuestion(snapshot);
   }
 
