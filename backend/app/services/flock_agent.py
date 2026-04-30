@@ -48,11 +48,108 @@ def _agent_name() -> str:
     return settings.flock_agent_name or os.environ.get("HOSTNAME") or socket.gethostname()
 
 
+def _sudo_available() -> bool:
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        return True
+    try:
+        return subprocess.run(["sudo", "-n", "true"], capture_output=True, text=True, timeout=2, check=False).returncode == 0
+    except Exception:
+        return False
+
+
 def _system_metadata() -> dict[str, Any]:
     return {
         "python": platform.python_version(),
         "system": platform.system(),
         "release": platform.release(),
+        "sudo": _sudo_available(),
+    }
+
+
+def _memory_metrics() -> dict[str, Any]:
+    values: dict[str, int] = {}
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            key, raw = line.split(":", 1)
+            values[key] = int(raw.strip().split()[0]) * 1024
+    except Exception:
+        return {}
+    total = values.get("MemTotal", 0)
+    available = values.get("MemAvailable", 0)
+    used = max(total - available, 0)
+    return {
+        "total_bytes": total,
+        "available_bytes": available,
+        "used_bytes": used,
+        "used_percent": round((used / total) * 100, 2) if total else None,
+    }
+
+
+def _disk_metrics() -> dict[str, Any]:
+    filesystems: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    mounts = ["/"]
+    try:
+        for line in Path("/proc/mounts").read_text().splitlines():
+            parts = line.split()
+            if len(parts) > 2 and parts[2] in {"ext4", "xfs", "btrfs", "overlay", "zfs"}:
+                mounts.append(parts[1])
+    except Exception:
+        pass
+    for mount in mounts:
+        if mount in seen:
+            continue
+        seen.add(mount)
+        try:
+            stat = os.statvfs(mount)
+        except Exception:
+            continue
+        total = stat.f_blocks * stat.f_frsize
+        available = stat.f_bavail * stat.f_frsize
+        used = max(total - available, 0)
+        filesystems.append(
+            {
+                "mount": mount,
+                "total_bytes": total,
+                "available_bytes": available,
+                "used_bytes": used,
+                "used_percent": round((used / total) * 100, 2) if total else None,
+            }
+        )
+    return {"filesystems": filesystems[:16]}
+
+
+def _network_metrics() -> dict[str, Any]:
+    interfaces: list[dict[str, Any]] = []
+    try:
+        lines = Path("/proc/net/dev").read_text().splitlines()[2:]
+    except Exception:
+        return {"interfaces": interfaces}
+    for line in lines:
+        name, raw = line.split(":", 1)
+        parts = raw.split()
+        interfaces.append(
+            {
+                "name": name.strip(),
+                "rx_bytes": int(parts[0]),
+                "rx_packets": int(parts[1]),
+                "rx_errs": int(parts[2]),
+                "rx_drop": int(parts[3]),
+                "tx_bytes": int(parts[8]),
+                "tx_packets": int(parts[9]),
+                "tx_errs": int(parts[10]),
+                "tx_drop": int(parts[11]),
+            }
+        )
+    return {"interfaces": interfaces}
+
+
+def _metrics() -> dict[str, Any]:
+    return {
+        "memory": _memory_metrics(),
+        "disk": _disk_metrics(),
+        "network": _network_metrics(),
+        "sudo": {"available": _sudo_available()},
     }
 
 
@@ -70,6 +167,7 @@ def _enroll(client: httpx.Client) -> dict[str, Any]:
             "architecture": platform.machine() or "unknown",
             "version": "dev",
             "metadata_json": _system_metadata(),
+            "metrics_json": _metrics(),
         },
         timeout=15,
     )
@@ -94,6 +192,7 @@ def _heartbeat(client: httpx.Client, state: dict[str, Any]) -> dict[str, Any]:
             "architecture": platform.machine() or "unknown",
             "version": "dev",
             "metadata_json": _system_metadata(),
+            "metrics_json": _metrics(),
         },
         headers=_headers(state),
         timeout=15,
@@ -114,8 +213,11 @@ def _claim_task(client: httpx.Client, state: dict[str, Any]) -> dict[str, Any] |
 
 def _execute(command: str, timeout_seconds: int) -> tuple[int, str]:
     try:
+        args = shlex.split(command)
+        if args and args[0] != "sudo" and hasattr(os, "geteuid") and os.geteuid() != 0 and _sudo_available():
+            args = ["sudo", "-n", *args]
         completed = subprocess.run(
-            shlex.split(command),
+            args,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
@@ -141,6 +243,13 @@ def _submit_result(client: httpx.Client, state: dict[str, Any], task_id: int, ex
     response.raise_for_status()
 
 
+def _remove_state() -> None:
+    try:
+        _state_path().unlink(missing_ok=True)
+    except Exception as exc:
+        logger.warning("Unable to remove Flock agent state: %s", exc)
+
+
 def run_agent() -> None:
     logging.basicConfig(level=logging.INFO)
     state = _load_state()
@@ -159,6 +268,11 @@ def run_agent() -> None:
                 task = _claim_task(client, state)
                 if task:
                     logger.info("Executing Flock task %s", task["id"])
+                    if task.get("task_type") == "unenroll":
+                        _submit_result(client, state, int(task["id"]), 0, "Flock agent unenrolled and local state removed.")
+                        _remove_state()
+                        logger.info("Flock agent unenrolled; exiting.")
+                        return
                     exit_code, output = _execute(task["command"], int(task.get("timeout_seconds") or policy.get("task_timeout_seconds") or 60))
                     _submit_result(client, state, int(task["id"]), exit_code, output)
                 time.sleep(int(policy.get("heartbeat_interval_seconds") or 10))

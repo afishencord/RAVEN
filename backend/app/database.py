@@ -34,6 +34,35 @@ def migrate_sqlite_schema() -> None:
                 if column not in existing:
                     connection.execute(text(statement))
 
+    if "health_check_results" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("health_check_results")}
+        additions = {
+            "health_check_id": "ALTER TABLE health_check_results ADD COLUMN health_check_id INTEGER",
+            "check_name": "ALTER TABLE health_check_results ADD COLUMN check_name VARCHAR(128)",
+            "check_type": "ALTER TABLE health_check_results ADD COLUMN check_type VARCHAR(32)",
+        }
+        with engine.begin() as connection:
+            for column, statement in additions.items():
+                if column not in existing:
+                    connection.execute(text(statement))
+
+    if "flock_agents" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("flock_agents")}
+        additions = {
+            "node_id": "ALTER TABLE flock_agents ADD COLUMN node_id INTEGER",
+            "unenrolled_at": "ALTER TABLE flock_agents ADD COLUMN unenrolled_at DATETIME",
+        }
+        with engine.begin() as connection:
+            for column, statement in additions.items():
+                if column not in existing:
+                    connection.execute(text(statement))
+
+    if "flock_tasks" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("flock_tasks")}
+        if "task_type" not in existing:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE flock_tasks ADD COLUMN task_type VARCHAR(32) DEFAULT 'command'"))
+
     if "execution_tasks" in inspector.get_table_names():
         existing = {column["name"] for column in inspector.get_columns("execution_tasks")}
         additions = {

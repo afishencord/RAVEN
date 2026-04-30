@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.deps import get_db
-from app.models import FlockTask, utcnow
+from app.models import FlockMetric, FlockTask, utcnow
 from app.schemas import (
     FlockClaimedTaskRead,
     FlockDispatchRequest,
@@ -18,12 +18,15 @@ from app.schemas import (
 )
 from app.services.flock import (
     authenticate_agent,
+    cleanup_agent_inventory_by_id,
     create_agent,
     default_policy,
     find_enrollment_token,
     mark_agent_seen,
+    mark_agent_unenrolled,
     resolve_agent_target,
     serialize_policy,
+    sync_inventory_node,
     wait_for_task_result,
 )
 
@@ -81,6 +84,10 @@ def heartbeat(
         agent.version = payload.version
     agent.metadata_json = {**(agent.metadata_json or {}), **payload.metadata_json}
     mark_agent_seen(db, agent)
+    if payload.metrics_json:
+        db.add(FlockMetric(agent_id=agent.id, payload_json=payload.metrics_json))
+    if not agent.node_id:
+        sync_inventory_node(db, agent)
     policy = agent.policy or default_policy(db)
     db.commit()
     return FlockHeartbeatResponse(status="ok", policy=serialize_policy(db, policy))
@@ -92,7 +99,10 @@ def claim_task(agent_id: str, authorization: str | None = Header(default=None), 
     mark_agent_seen(db, agent)
     task = (
         db.query(FlockTask)
-        .filter(FlockTask.agent_id == agent.id, FlockTask.status == "queued")
+        .filter(
+            FlockTask.agent_id == agent.id,
+            (FlockTask.status == "queued") | ((FlockTask.task_type == "unenroll") & (FlockTask.status == "running")),
+        )
         .order_by(FlockTask.queued_at.asc(), FlockTask.id.asc())
         .first()
     )
@@ -103,7 +113,7 @@ def claim_task(agent_id: str, authorization: str | None = Header(default=None), 
     task.claimed_at = utcnow()
     db.commit()
     db.refresh(task)
-    return FlockClaimedTaskRead(id=task.id, command=task.command, timeout_seconds=task.timeout_seconds)
+    return FlockClaimedTaskRead(id=task.id, task_type=task.task_type, command=task.command, timeout_seconds=task.timeout_seconds)
 
 
 @router.post("/agents/{agent_id}/tasks/{task_id}/result")
@@ -123,7 +133,12 @@ def submit_task_result(
     task.output = payload.output[:8000]
     task.status = "success" if payload.exit_code == 0 else "failed"
     task.finished_at = utcnow()
+    if task.task_type == "unenroll" and payload.exit_code == 0:
+        cleanup_agent_id = agent.id
+        mark_agent_unenrolled(db, agent)
     db.commit()
+    if task.task_type == "unenroll" and payload.exit_code == 0:
+        cleanup_agent_inventory_by_id(cleanup_agent_id)
     return {"status": "ok"}
 
 
