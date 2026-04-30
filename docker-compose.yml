@@ -70,7 +70,7 @@ services:
       - flock
     volumes:
       - flock-test-state:/agent-state
-    restart: unless-stopped
+    restart: "no"
 
   frontend:
     build:

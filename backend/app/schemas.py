@@ -103,10 +103,13 @@ class FlockAgentRead(BaseModel):
     policy_id: int | None
     policy_name: str | None = None
     enrollment_token_id: int | None
+    node_id: int | None = None
     status: str
     last_seen_at: datetime | None
     enrolled_at: datetime
+    unenrolled_at: datetime | None = None
     metadata_json: dict
+    latest_metrics: dict | None = None
     pending_task_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -139,6 +142,7 @@ class FlockHeartbeatRequest(BaseModel):
     architecture: str | None = None
     version: str | None = None
     metadata_json: dict = Field(default_factory=dict)
+    metrics_json: dict = Field(default_factory=dict)
 
 
 class FlockHeartbeatResponse(BaseModel):
@@ -148,6 +152,7 @@ class FlockHeartbeatResponse(BaseModel):
 
 class FlockClaimedTaskRead(BaseModel):
     id: int
+    task_type: str = "command"
     command: str
     timeout_seconds: int
 
@@ -170,6 +175,71 @@ class FlockDispatchResponse(BaseModel):
     output: str
     agent_id: str | None = None
     task_id: int | None = None
+
+
+class FlockUnenrollResponse(BaseModel):
+    status: str
+    agent_id: str
+    node_id: int | None = None
+    task_id: int | None = None
+
+
+class FlockMetricRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: int
+    payload_json: dict
+    collected_at: datetime
+
+
+class NodeHealthCheckBase(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    check_type: str = Field(min_length=1, max_length=32)
+    config_json: dict = Field(default_factory=dict)
+    interval_seconds: int = 60
+    timeout_seconds: int = 5
+    retry_count: int = 3
+    is_enabled: bool = True
+    sort_order: int = 0
+
+
+class NodeHealthCheckCreate(NodeHealthCheckBase):
+    pass
+
+
+class NodeHealthCheckUpdate(BaseModel):
+    name: str | None = None
+    check_type: str | None = None
+    config_json: dict | None = None
+    interval_seconds: int | None = None
+    timeout_seconds: int | None = None
+    retry_count: int | None = None
+    is_enabled: bool | None = None
+    sort_order: int | None = None
+
+
+class NodeHealthCheckRead(NodeHealthCheckBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    node_id: int
+    current_status: str
+    consecutive_failures: int
+    last_run_at: datetime | None
+    last_success_at: datetime | None
+    last_failure_at: datetime | None
+    last_latency_ms: int | None
+    last_http_status: int | None
+    last_error_type: str | None
+    last_error_detail: str | None
+    last_response_excerpt: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class NodeHealthCheckReplaceRequest(BaseModel):
+    health_checks: list[NodeHealthCheckCreate] = Field(default_factory=list)
 
 
 class NodeBase(BaseModel):
@@ -276,6 +346,9 @@ class HealthCheckRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    health_check_id: int | None = None
+    check_name: str | None = None
+    check_type: str | None = None
     status: str
     success: bool
     latency_ms: int | None
@@ -563,6 +636,7 @@ class AuditLogRead(BaseModel):
 class NodeDetailRead(BaseModel):
     node: NodeRead
     health_checks: list[HealthCheckRead]
+    health_check_definitions: list[NodeHealthCheckRead] = Field(default_factory=list)
     incidents: list[IncidentRead]
     recommendations: list[AIRecommendationRead]
     executions: list[ExecutionTaskRead]

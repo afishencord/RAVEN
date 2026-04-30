@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_password_hash
 from app.config import get_settings
-from app.models import Credential, FlockEnrollmentToken, FlockPolicy, Node, RemediationProfile, User
+from app.models import Credential, FlockAgent, FlockEnrollmentToken, FlockMetric, FlockPolicy, FlockTask, Node, NodeHealthCheck, RemediationProfile, User
 
 
 def seed_data(db: Session) -> None:
@@ -29,6 +29,23 @@ def seed_data(db: Session) -> None:
                 post_action_validation={"mode": "rerun_health_check"},
             )
         )
+
+    for agent in db.query(FlockAgent).filter(FlockAgent.status == "unenrolled").all():
+        node = db.query(Node).filter(Node.id == agent.node_id).first() if agent.node_id else None
+        db.query(FlockMetric).filter(FlockMetric.agent_id == agent.id).delete(synchronize_session=False)
+        db.query(FlockTask).filter(FlockTask.agent_id == agent.id).delete(synchronize_session=False)
+        if node:
+            db.delete(node)
+        db.delete(agent)
+
+    for node in (
+        db.query(Node)
+        .filter(Node.execution_mode == "agent", Node.execution_target.like("flock:%"), Node.is_enabled.is_(False))
+        .all()
+    ):
+        linked = db.query(FlockAgent).filter(FlockAgent.node_id == node.id).first()
+        if not linked and node.description == "Auto-enrolled Flock agent host.":
+            db.delete(node)
 
     credential = db.query(Credential).filter(Credential.name == "local-agent-token").first()
     if not credential:
@@ -96,6 +113,23 @@ def seed_data(db: Session) -> None:
         node.remediation_profile = "command-executor"
         for key, value in defaults.get(node.name, {}).items():
             setattr(node, key, value)
+        if not db.query(NodeHealthCheck).filter(NodeHealthCheck.node_id == node.id).first():
+            db.add(
+                NodeHealthCheck(
+                    node_id=node.id,
+                    name=f"{node.health_check_type.upper()} health",
+                    check_type=node.health_check_type or "http",
+                    config_json={
+                        **({"url": node.url} if node.url else {}),
+                        **({"path": node.health_check_path} if node.health_check_path else {}),
+                        "expected_status_code": node.expected_status_code,
+                        **({"expected_response_contains": node.expected_response_contains} if node.expected_response_contains else {}),
+                    },
+                    interval_seconds=node.check_interval_seconds,
+                    timeout_seconds=node.timeout_seconds,
+                    retry_count=node.retry_count,
+                )
+            )
 
     raven_test = db.query(Node).filter(Node.name == "Raven Test").first()
     if raven_test:

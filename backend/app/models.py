@@ -108,10 +108,38 @@ class Node(TimestampMixin, Base):
     last_incident_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     health_checks: Mapped[list["HealthCheckResult"]] = relationship(back_populates="node", cascade="all, delete-orphan")
+    health_check_definitions: Mapped[list["NodeHealthCheck"]] = relationship(back_populates="node", cascade="all, delete-orphan")
     incidents: Mapped[list["Incident"]] = relationship(back_populates="node", cascade="all, delete-orphan")
     executions: Mapped[list["ExecutionTask"]] = relationship(back_populates="node", cascade="all, delete-orphan")
     validation_assignments: Mapped[list["NodeValidationAssignment"]] = relationship(back_populates="node", cascade="all, delete-orphan")
     remediation_assignments: Mapped[list["NodeRemediationAssignment"]] = relationship(back_populates="node", cascade="all, delete-orphan")
+
+
+class NodeHealthCheck(TimestampMixin, Base):
+    __tablename__ = "node_health_checks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    check_type: Mapped[str] = mapped_column(String(32), index=True)
+    config_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=5)
+    retry_count: Mapped[int] = mapped_column(Integer, default=3)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    current_status: Mapped[str] = mapped_column(String(32), default="healthy", index=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_error_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_response_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    node: Mapped["Node"] = relationship(back_populates="health_check_definitions")
 
 
 class NodeValidationAssignment(TimestampMixin, Base):
@@ -159,6 +187,9 @@ class HealthCheckResult(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
+    health_check_id: Mapped[int | None] = mapped_column(ForeignKey("node_health_checks.id"), nullable=True, index=True)
+    check_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    check_type: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
     success: Mapped[bool] = mapped_column(Boolean, default=False)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -371,14 +402,28 @@ class FlockAgent(TimestampMixin, Base):
     token_hash: Mapped[str] = mapped_column(Text)
     policy_id: Mapped[int | None] = mapped_column(ForeignKey("flock_policies.id"), nullable=True)
     enrollment_token_id: Mapped[int | None] = mapped_column(ForeignKey("flock_enrollment_tokens.id"), nullable=True)
+    node_id: Mapped[int | None] = mapped_column(ForeignKey("nodes.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), default="enrolled", index=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    unenrolled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
 
     policy: Mapped["FlockPolicy | None"] = relationship()
     enrollment_token: Mapped["FlockEnrollmentToken | None"] = relationship()
+    node: Mapped["Node | None"] = relationship()
     tasks: Mapped[list["FlockTask"]] = relationship(back_populates="agent", cascade="all, delete-orphan")
+
+
+class FlockMetric(Base):
+    __tablename__ = "flock_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("flock_agents.id"), index=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    agent: Mapped["FlockAgent"] = relationship()
 
 
 class FlockTask(Base):
@@ -387,6 +432,7 @@ class FlockTask(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("flock_agents.id"), index=True)
     execution_task_id: Mapped[int | None] = mapped_column(ForeignKey("execution_tasks.id"), nullable=True, index=True)
+    task_type: Mapped[str] = mapped_column(String(32), default="command", index=True)
     command: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)

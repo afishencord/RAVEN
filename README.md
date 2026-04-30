@@ -48,9 +48,11 @@ docker-compose.yml        backend, runner, Flock, test agent, and frontend deplo
 - JWT authentication with `viewer`, `operator`, and `admin` roles
 - Analytics dashboard with node-state, remediation, execution, environment, approval, and failure visualizations
 - Infrastructure workspace with tabbed Nodes and Flock views
-- Node CRUD, enable/disable, status filtering, drag-and-drop grouping, and live status updates
-- Add/Edit Node execution setup with Runner and Agent tabs
-- Flock tab for enrolled agents, heartbeat status, policy assignment, and policy controls
+- Node CRUD, enable/disable, status filtering, drag-and-drop grouping, live status updates, and multi-check health definitions
+- Add/Edit Node execution setup with Runner and Agent tabs plus a health-check table
+- Flock tab for enrolled agents, heartbeat status, policy assignment, latest metrics, linked inventory nodes, and unenrollment
+- Automatic inventory enrollment for Flock agents: each enrolled Linux/Unix agent creates or updates one agent-mode inventory node
+- Multiple node health checks with per-check interval, timeout, retry, type-specific config, and worst-check-wins node status
 - Node detail view with live health check, incident, recommendation, and execution history
 - Admin-only credential management with a full-width table layout
 - Alerts page (work in progress, frontend wired) with a unified notification table and date/category filters
@@ -82,8 +84,34 @@ docker-compose.yml        backend, runner, Flock, test agent, and frontend deplo
   - the model selects from eligible remediations, with a deterministic single-remediation fallback when no model client is available
 - Separate runner process for queued command execution
 - `raven-flock` broker for enrolled Linux/Unix Flock agents
-- `flock-test` development agent container for validating enrollment and brokered execution
+- `flock-test` development agent container for validating enrollment, metrics, brokered execution, and unenrollment cleanup
 - Audit logs and approval decision records
+
+## Node Health Checks
+
+Nodes can have multiple enabled health checks at the same time. The monitoring loop evaluates each check on its own interval and retry policy, stores check-level history, and derives the node status from the worst enabled check.
+
+Supported first-pass check types:
+
+- `ping`: host reachability with interval, timeout, and retry controls
+- `http` / `https`: URL/path, expected status, optional expected text, interval, timeout, and retry controls
+- `api`: method, URL/path, expected status, optional expected text, interval, timeout, and retry controls
+- `memory`: agent-reported memory usage thresholds
+- `disk`: agent-reported filesystem usage thresholds
+- `network`: agent-reported interface/drop counters
+
+Legacy single-check node fields are still present for compatibility, but the Add/Edit Node form writes the new multi-check definitions.
+
+## Flock Agent Lifecycle
+
+Flock agents currently target Linux/Unix hosts.
+
+- Enrollment uses a Flock enrollment token and returns an agent token.
+- Successful enrollment creates or updates one inventory node with `execution_mode="agent"` and `execution_target="flock:<agent-id>"`.
+- Agent heartbeats report platform metadata, sudo capability, memory, disk, and network metrics.
+- Approved commands for agent-mode nodes are dispatched by the runner to `raven-flock`; the enrolled agent polls, executes locally, and submits output.
+- Admin unenrollment queues an `unenroll` control task. After the agent confirms uninstall, RAVEN removes the Flock agent record, linked auto-created inventory node, queued task, and metrics artifacts.
+- `flock-test` is configured with `restart: "no"` so local unenrollment validation leaves the container stopped instead of re-enrolling immediately.
 
 ## Security Model
 
@@ -94,6 +122,7 @@ RAVEN keeps AI out of the direct execution path:
 - Approved commands are written to `execution_tasks`.
 - The `raven-runner` container polls queued tasks and performs execution.
 - For agent-mode nodes, the runner dispatches approved work to `raven-flock`; enrolled agents poll Flock, execute locally, and return command results.
+- Flock agents are expected to be installed with sudo permissions for local status polling and approved command execution.
 - Frontend code never executes shell commands.
 - Command execution records include command preview, exit code, output, and post-action validation.
 - OpenAI calls are limited to incident recommendation generation, validation-output evaluation, automation gate selection, and user/operator-prompted follow-up workflows.
@@ -123,6 +152,7 @@ Important values:
 - `FRONTEND_ORIGIN`: keep as `http://localhost:3000` for Docker Compose.
 - `FLOCK_INTERNAL_TOKEN`: shared internal token used by the runner to dispatch work to `raven-flock`.
 - `FLOCK_ENROLLMENT_TOKEN`: enrollment token used by Linux/Unix agents during first join. Compose seeds `dev-flock-enrollment-token` for local development.
+- `FLOCK_AGENT_STATE_PATH`: local path where a Flock agent stores its enrolled agent ID/token.
 
 Docker Compose overrides `DATABASE_URL` to `sqlite:////data/raven.db` so backend, runner, and Flock share state through the `raven-data` volume.
 
@@ -139,7 +169,7 @@ Services:
 - `raven-backend`: FastAPI API plus embedded monitoring loop
 - `raven-runner`: approved command execution daemon
 - `raven-flock`: Flock enrollment, heartbeat, policy, and task broker server
-- `flock-test`: Linux/Unix development agent that enrolls with `raven-flock`
+- `flock-test`: Linux/Unix development agent that enrolls with `raven-flock`; restart is disabled so unenrollment leaves it stopped
 - `raven-frontend`: Next.js UI
 
 Open:
@@ -168,6 +198,21 @@ docker compose exec -T flock curl -fsS \
 ```
 
 Successful local dispatch returns a JSON response with `status: "success"`, `exit_code: 0`, and Linux/Unix command output.
+
+Verify local Flock unenrollment cleanup:
+
+```bash
+TOKEN=$(docker compose exec -T backend curl -fsS \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123!"}' \
+  http://localhost:8000/api/auth/login | python -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+
+docker compose exec -T backend curl -fsS -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/flock/agents/{agent_row_id}/unenroll
+```
+
+After the agent processes the control task, `docker inspect flock-test --format '{{.State.Status}} {{.RestartCount}}'` should show `exited 0`, and the Flock agent plus linked auto-created inventory node should be removed from the UI/API.
 
 Stop:
 
@@ -249,6 +294,8 @@ docker compose exec -T backend curl -fsSI http://frontend:3000/messages
 docker compose exec -T flock curl -fsS -H 'Content-Type: application/json' -H 'X-Flock-Internal-Token: dev-flock-internal-token' -d '{"target":"flock:flock-test","command":"uname -s","timeout_seconds":30}' http://localhost:8000/api/flock/internal/dispatch
 ```
 
+For Flock lifecycle work, also verify enrollment creates exactly one agent-mode node, metrics are stored, unenrollment removes the agent/node/task/metric artifacts, and `flock-test` remains stopped.
+
 ## API Highlights
 
 - `POST /api/auth/login`
@@ -257,6 +304,8 @@ docker compose exec -T flock curl -fsS -H 'Content-Type: application/json' -H 'X
 - `GET|PUT|DELETE /api/nodes/{id}`
 - `GET /api/nodes/{id}/detail`
 - `POST /api/nodes/{id}/rerun-check`
+- `GET|PUT /api/nodes/{id}/health-checks`
+- `POST /api/nodes/{id}/health-checks/{check_id}/run`
 - `GET /api/node-groups`
 - `POST /api/node-groups`
 - `DELETE /api/node-groups/{id}`
@@ -285,6 +334,8 @@ docker compose exec -T flock curl -fsS -H 'Content-Type: application/json' -H 'X
 - `GET /api/credentials`
 - `GET /api/flock/agents`
 - `PUT /api/flock/agents/{id}`
+- `POST /api/flock/agents/{id}/unenroll`
+- `GET /api/flock/agents/{id}/metrics`
 - `GET|POST /api/flock/policies`
 - `PUT /api/flock/policies/{id}`
 
@@ -298,11 +349,11 @@ Flock agent-facing and internal broker endpoints are served by `raven-flock`:
 
 ## Message Center Workflow
 
-1. Monitoring detects repeated health-check failures.
+1. Monitoring detects repeated health-check failures from one or more node health checks.
 2. Backend creates an incident and internal alert message.
 3. If the node has an automatic remediation playbook, backend runs assigned validations and evaluates connected remediation eligibility.
 4. If playbook validations match, RAVEN can queue an automated remediation through the node's configured execution route.
-5. AI generates the initial summary and three command cards using node context and failure details.
+5. AI generates the initial summary and three command cards using node context, failed-check details, metrics, and failure history.
 6. Operator approves or rejects one proposed command.
 7. Runner executes approved or automated commands directly, or dispatches agent-mode work through Flock.
 8. Backend performs post-action validation.
@@ -338,5 +389,6 @@ The seeded MVP data uses `local:raven-backend`. Agent-mode nodes can use `flock:
 - The runner executes commands available inside its own container or through SSH/API targets.
 - The Flock agent workflow currently targets Linux/Unix. Windows enrollment and service installation are planned later.
 - Local Compose uses development Flock tokens. Replace them before any shared or persistent deployment.
+- Flock metrics and control tasks use the shared SQLite MVP database. PostgreSQL will be a better fit for larger concurrent agent fleets.
 - Managing host Docker or host services from the runner requires explicit host integration.
 - AI command proposals should still be reviewed carefully before approval.

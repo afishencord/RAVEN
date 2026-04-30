@@ -10,7 +10,7 @@ import { NodeForm } from "@/components/node-form";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch, requireSession } from "@/lib/api";
 import { useLiveRefresh } from "@/lib/live-updates";
-import { CredentialRecord, FlockAgent, FlockPolicy, NodeAutomationAssignments, NodeAutomationEdgeInput, NodeGroupRecord, NodeRecord, RemediationDefinition, User, ValidationDefinition } from "@/lib/types";
+import { CredentialRecord, FlockAgent, FlockPolicy, NodeAutomationAssignments, NodeAutomationEdgeInput, NodeGroupRecord, NodeHealthCheckDefinition, NodeHealthCheckInput, NodeRecord, RemediationDefinition, User, ValidationDefinition } from "@/lib/types";
 
 const filters = ["all", "healthy", "degraded", "down", "disabled"] as const;
 const tabs = ["nodes", "flock"] as const;
@@ -85,18 +85,32 @@ function timeAgo(value?: string | null) {
   return `${hours}h ago`;
 }
 
+function metricPercent(agent: FlockAgent, path: "memory" | "disk") {
+  const metrics = agent.latest_metrics ?? {};
+  if (path === "memory") {
+    const value = (metrics.memory as Record<string, unknown> | undefined)?.used_percent;
+    return typeof value === "number" ? `${value.toFixed(1)}%` : "n/a";
+  }
+  const filesystems = (metrics.disk as Record<string, unknown> | undefined)?.filesystems;
+  const first = Array.isArray(filesystems) ? (filesystems[0] as Record<string, unknown> | undefined) : undefined;
+  const value = first?.used_percent;
+  return typeof value === "number" ? `${value.toFixed(1)}%` : "n/a";
+}
+
 function FlockWorkspace({
   nodes,
   agents,
   policies,
   onAgentPolicyChange,
   onPolicyUpdate,
+  onUnenrollAgent,
 }: {
   nodes: NodeRecord[];
   agents: FlockAgent[];
   policies: FlockPolicy[];
   onAgentPolicyChange: (agentId: number, policyId: number) => void;
   onPolicyUpdate: (policyId: number, payload: Partial<FlockPolicy>) => void;
+  onUnenrollAgent: (agentId: number) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -127,7 +141,9 @@ function FlockWorkspace({
                 <th className="px-4 py-3 font-medium">Host</th>
                 <th className="px-4 py-3 font-medium">Policy</th>
                 <th className="px-4 py-3 font-medium">Heartbeat</th>
+                <th className="px-4 py-3 font-medium">Metrics</th>
                 <th className="px-4 py-3 font-medium">Tasks</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-[#050814]">
@@ -158,12 +174,27 @@ function FlockWorkspace({
                     <StatusBadge status={agent.status === "online" ? "healthy" : "degraded"} />
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{timeAgo(agent.last_seen_at)}</p>
                   </td>
+                  <td className="px-4 py-4 text-xs text-slate-600 dark:text-slate-300">
+                    <p>Memory {metricPercent(agent, "memory")}</p>
+                    <p>Disk {metricPercent(agent, "disk")}</p>
+                    <p>{agent.node_id ? `Node #${agent.node_id}` : "No linked node"}</p>
+                  </td>
                   <td className="px-4 py-4 text-slate-600 dark:text-slate-300">{agent.pending_task_count} pending</td>
+                  <td className="px-4 py-4">
+                    <button
+                      type="button"
+                      disabled={agent.status === "unenrolled" || agent.status === "unenroll_pending"}
+                      className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900 dark:bg-[#0B1020] dark:text-rose-300"
+                      onClick={() => onUnenrollAgent(agent.id)}
+                    >
+                      {agent.status === "unenroll_pending" ? "Pending" : "Unenroll"}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {!agents.length ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                     No Flock agents are enrolled yet.
                   </td>
                 </tr>
@@ -240,6 +271,7 @@ export function InfrastructurePage() {
   const [formValidationIds, setFormValidationIds] = useState<number[]>([]);
   const [formRemediationIds, setFormRemediationIds] = useState<number[]>([]);
   const [formAutomationEdges, setFormAutomationEdges] = useState<NodeAutomationEdgeInput[]>([]);
+  const [formHealthChecks, setFormHealthChecks] = useState<NodeHealthCheckDefinition[]>([]);
   const [activeTab, setActiveTab] = useState<InfrastructureTab>("nodes");
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
@@ -317,11 +349,16 @@ export function InfrastructurePage() {
     const validationIds = (payload.automation_validation_ids as number[] | undefined) ?? [];
     const remediationIds = (payload.automation_remediation_ids as number[] | undefined) ?? [];
     const automationEdges = (payload.automation_edges as NodeAutomationEdgeInput[] | undefined) ?? [];
-    const { automation_validation_ids: _validationIds, automation_remediation_ids: _remediationIds, automation_edges: _automationEdges, ...nodePayload } = payload;
+    const healthChecks = (payload.health_checks as NodeHealthCheckInput[] | undefined) ?? [];
+    const { automation_validation_ids: _validationIds, automation_remediation_ids: _remediationIds, automation_edges: _automationEdges, health_checks: _healthChecks, ...nodePayload } = payload;
     const path = editing ? `/nodes/${editing.id}` : "/nodes";
     const method = editing ? "PUT" : "POST";
     const saved = await apiFetch<NodeRecord>(path, { method, body: JSON.stringify(nodePayload) });
     if (canAdminister) {
+      await apiFetch<NodeHealthCheckDefinition[]>(`/nodes/${saved.id}/health-checks`, {
+        method: "PUT",
+        body: JSON.stringify({ health_checks: healthChecks }),
+      });
       await apiFetch<NodeAutomationAssignments>(`/nodes/${saved.id}/automation-assignments`, {
         method: "PUT",
         body: JSON.stringify({ validation_ids: validationIds, remediation_ids: remediationIds, edges: automationEdges }),
@@ -332,6 +369,7 @@ export function InfrastructurePage() {
     setFormValidationIds([]);
     setFormRemediationIds([]);
     setFormAutomationEdges([]);
+    setFormHealthChecks([]);
     await refreshInfrastructure();
   }
 
@@ -341,14 +379,17 @@ export function InfrastructurePage() {
     if (canAdminister) {
       try {
         const assignments = await apiFetch<NodeAutomationAssignments>(`/nodes/${node.id}/automation-assignments`);
+        const healthChecks = await apiFetch<NodeHealthCheckDefinition[]>(`/nodes/${node.id}/health-checks`);
         setFormValidationIds(assignments.validations.map((item) => item.validation_id));
         setFormRemediationIds(assignments.remediations.map((item) => item.remediation_id));
         setFormAutomationEdges((assignments.edges ?? []).map((edge) => ({ validation_id: edge.validation_id, remediation_id: edge.remediation_id })));
+        setFormHealthChecks(healthChecks);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load automation assignments");
         setFormValidationIds([]);
         setFormRemediationIds([]);
         setFormAutomationEdges([]);
+        setFormHealthChecks([]);
       }
     }
     setShowForm(true);
@@ -359,6 +400,7 @@ export function InfrastructurePage() {
     setFormValidationIds([]);
     setFormRemediationIds([]);
     setFormAutomationEdges([]);
+    setFormHealthChecks([]);
     setShowForm(true);
   }
 
@@ -433,6 +475,19 @@ export function InfrastructurePage() {
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update Flock policy");
+    }
+  }
+
+  async function unenrollFlockAgent(agentId: number) {
+    if (!window.confirm("Unenroll this Flock agent and uninstall it from the device?")) {
+      return;
+    }
+    setError("");
+    try {
+      await apiFetch(`/flock/agents/${agentId}/unenroll`, { method: "POST" });
+      await refreshInfrastructure();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to unenroll Flock agent");
     }
   }
 
@@ -790,6 +845,7 @@ export function InfrastructurePage() {
             policies={flockPolicies}
             onAgentPolicyChange={(agentId, policyId) => { void updateFlockAgentPolicy(agentId, policyId); }}
             onPolicyUpdate={(policyId, payload) => { void updateFlockPolicy(policyId, payload); }}
+            onUnenrollAgent={(agentId) => { void unenrollFlockAgent(agentId); }}
           />
         )}
       </div>
@@ -810,13 +866,14 @@ export function InfrastructurePage() {
                   setFormValidationIds([]);
                   setFormRemediationIds([]);
                   setFormAutomationEdges([]);
+                  setFormHealthChecks([]);
                 }}
               >
                 Close
               </button>
             </div>
             <NodeForm
-              key={editing ? `edit:${editing.id}:${formValidationIds.join(",")}:${formRemediationIds.join(",")}:${formAutomationEdges.map((edge) => `${edge.validation_id}-${edge.remediation_id}`).join(",")}` : "create"}
+              key={editing ? `edit:${editing.id}:${formValidationIds.join(",")}:${formRemediationIds.join(",")}:${formAutomationEdges.map((edge) => `${edge.validation_id}-${edge.remediation_id}`).join(",")}:${formHealthChecks.map((check) => check.id).join(",")}` : "create"}
               credentials={credentials}
               flockAgents={flockAgents}
               flockPolicies={flockPolicies}
@@ -825,6 +882,7 @@ export function InfrastructurePage() {
               initialValidationIds={formValidationIds}
               initialRemediationIds={formRemediationIds}
               initialAutomationEdges={formAutomationEdges}
+              initialHealthChecks={formHealthChecks}
               initial={editing}
               onSubmit={saveNode}
               onCancel={() => {
@@ -833,6 +891,7 @@ export function InfrastructurePage() {
                 setFormValidationIds([]);
                 setFormRemediationIds([]);
                 setFormAutomationEdges([]);
+                setFormHealthChecks([]);
               }}
             />
           </div>

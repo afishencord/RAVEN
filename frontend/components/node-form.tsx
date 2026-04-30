@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { GitBranch, Info, Plus, Search, Trash2, X } from "lucide-react";
 
-import { CredentialRecord, FlockAgent, FlockPolicy, NodeAutomationEdgeInput, NodeRecord, RemediationDefinition, ValidationDefinition } from "@/lib/types";
+import { CredentialRecord, FlockAgent, FlockPolicy, NodeAutomationEdgeInput, NodeHealthCheckDefinition, NodeHealthCheckInput, NodeRecord, RemediationDefinition, ValidationDefinition } from "@/lib/types";
 
 type Props = {
   credentials: CredentialRecord[];
@@ -14,6 +14,7 @@ type Props = {
   initialValidationIds?: number[];
   initialRemediationIds?: number[];
   initialAutomationEdges?: NodeAutomationEdgeInput[];
+  initialHealthChecks?: NodeHealthCheckDefinition[];
   initial?: NodeRecord | null;
   onSubmit: (payload: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
@@ -42,6 +43,80 @@ const defaultValues = {
   is_enabled: true,
 };
 
+type HealthCheckDraft = {
+  client_id: string;
+  name: string;
+  check_type: string;
+  config_json: Record<string, string>;
+  interval_seconds: string;
+  timeout_seconds: string;
+  retry_count: string;
+  is_enabled: boolean;
+  sort_order: number;
+};
+
+function defaultHealthCheck(type = "http", index = 0): HealthCheckDraft {
+  return {
+    client_id: `${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
+    name: type === "http" ? "HTTP health" : `${type.charAt(0).toUpperCase()}${type.slice(1)} check`,
+    check_type: type,
+    config_json:
+      type === "ping"
+        ? {}
+        : type === "memory"
+          ? { warning_percent: "80", critical_percent: "90" }
+          : type === "disk"
+            ? { path: "/", warning_percent: "80", critical_percent: "90" }
+            : type === "network"
+              ? { interface: "", drop_threshold: "0" }
+              : { url: "", path: "/health", expected_status_code: "200", expected_response_contains: "", method: "GET" },
+    interval_seconds: type === "disk" || type === "network" ? "120" : "60",
+    timeout_seconds: "5",
+    retry_count: "3",
+    is_enabled: true,
+    sort_order: index,
+  };
+}
+
+function draftFromDefinition(check: NodeHealthCheckDefinition, index: number): HealthCheckDraft {
+  const config: Record<string, string> = {};
+  for (const [key, value] of Object.entries(check.config_json ?? {})) {
+    config[key] = value === null || value === undefined ? "" : String(value);
+  }
+  return {
+    client_id: `${check.id}-${index}`,
+    name: check.name,
+    check_type: check.check_type,
+    config_json: config,
+    interval_seconds: String(check.interval_seconds),
+    timeout_seconds: String(check.timeout_seconds),
+    retry_count: String(check.retry_count),
+    is_enabled: check.is_enabled,
+    sort_order: check.sort_order ?? index,
+  };
+}
+
+function serializeHealthCheck(check: HealthCheckDraft, index: number): NodeHealthCheckInput {
+  const config: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(check.config_json)) {
+    if (value === "") {
+      continue;
+    }
+    const numericKeys = new Set(["expected_status_code", "warning_percent", "critical_percent", "drop_threshold"]);
+    config[key] = numericKeys.has(key) ? Number(value) : value;
+  }
+  return {
+    name: check.name.trim() || `${check.check_type} check`,
+    check_type: check.check_type,
+    config_json: config,
+    interval_seconds: Number(check.interval_seconds) || 60,
+    timeout_seconds: Number(check.timeout_seconds) || 5,
+    retry_count: Number(check.retry_count) || 3,
+    is_enabled: check.is_enabled,
+    sort_order: index,
+  };
+}
+
 export function NodeForm({
   credentials,
   flockAgents = [],
@@ -51,6 +126,7 @@ export function NodeForm({
   initialValidationIds = [],
   initialRemediationIds = [],
   initialAutomationEdges = [],
+  initialHealthChecks = [],
   initial,
   onSubmit,
   onCancel,
@@ -79,6 +155,9 @@ export function NodeForm({
   const [selectedValidationIds, setSelectedValidationIds] = useState<Set<number>>(() => new Set(initialValidationIds));
   const [selectedRemediationIds, setSelectedRemediationIds] = useState<Set<number>>(() => new Set(initialRemediationIds));
   const [automationEdges, setAutomationEdges] = useState<NodeAutomationEdgeInput[]>(() => initialAutomationEdges);
+  const [healthChecks, setHealthChecks] = useState<HealthCheckDraft[]>(() =>
+    initialHealthChecks.length ? initialHealthChecks.map(draftFromDefinition) : [defaultHealthCheck(initial?.health_check_type ?? "http", 0)],
+  );
   const [showPlaybookBuilder, setShowPlaybookBuilder] = useState(false);
   const [saving, setSaving] = useState(false);
   const activeExecutionMode = form.execution_mode as "runner" | "agent";
@@ -97,19 +176,50 @@ export function NodeForm({
     });
   }
 
+  function updateHealthCheck(index: number, patch: Partial<HealthCheckDraft>) {
+    setHealthChecks((current) => current.map((check, itemIndex) => (itemIndex === index ? { ...check, ...patch } : check)));
+  }
+
+  function updateHealthCheckConfig(index: number, key: string, value: string) {
+    setHealthChecks((current) =>
+      current.map((check, itemIndex) =>
+        itemIndex === index ? { ...check, config_json: { ...check.config_json, [key]: value } } : check,
+      ),
+    );
+  }
+
+  function changeHealthCheckType(index: number, type: string) {
+    setHealthChecks((current) =>
+      current.map((check, itemIndex) => {
+        if (itemIndex !== index) {
+          return check;
+        }
+        const next = defaultHealthCheck(type, index);
+        return { ...next, client_id: check.client_id, name: next.name, interval_seconds: check.interval_seconds || next.interval_seconds };
+      }),
+    );
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     try {
+      const serializedHealthChecks = healthChecks.map(serializeHealthCheck);
+      const primaryCheck = serializedHealthChecks[0] ?? serializeHealthCheck(defaultHealthCheck(), 0);
       await onSubmit({
         ...form,
+        health_check_type: primaryCheck.check_type,
+        health_check_path: (primaryCheck.config_json.path as string | undefined) ?? (primaryCheck.config_json.health_path as string | undefined) ?? form.health_check_path,
+        url: (primaryCheck.config_json.url as string | undefined) ?? form.url,
+        expected_status_code: Number(primaryCheck.config_json.expected_status_code ?? form.expected_status_code),
+        expected_response_contains: (primaryCheck.config_json.expected_response_contains as string | undefined) ?? form.expected_response_contains,
+        check_interval_seconds: primaryCheck.interval_seconds,
+        timeout_seconds: primaryCheck.timeout_seconds,
+        retry_count: primaryCheck.retry_count,
         port: form.port ? Number(form.port) : null,
-        expected_status_code: Number(form.expected_status_code),
-        check_interval_seconds: Number(form.check_interval_seconds),
-        timeout_seconds: Number(form.timeout_seconds),
-        retry_count: Number(form.retry_count),
         credential_id: form.credential_id ? Number(form.credential_id) : null,
         group_name: form.group_name.trim() || null,
+        health_checks: serializedHealthChecks,
         automation_validation_ids: Array.from(selectedValidationIds),
         automation_remediation_ids: Array.from(selectedRemediationIds),
         automation_edges: automationEdges,
@@ -169,12 +279,6 @@ export function NodeForm({
         ["Host / IP", "host"],
         ["Port", "port"],
         ["URL", "url"],
-        ["Health Path", "health_check_path"],
-        ["Expected Status", "expected_status_code"],
-        ["Expected Text", "expected_response_contains"],
-        ["Interval Seconds", "check_interval_seconds"],
-        ["Timeout Seconds", "timeout_seconds"],
-        ["Retry Count", "retry_count"],
         ["Folder", "group_name"],
       ].map(([label, key]) => (
         <label key={key} className="text-sm text-slate-700 dark:text-slate-200">
@@ -215,20 +319,6 @@ export function NodeForm({
       )}
 
       <label className="text-sm text-slate-700 dark:text-slate-200">
-        <span className="mb-2 block font-medium">Health Check Type</span>
-        <select
-          value={form.health_check_type}
-          onChange={(event) => setForm((current) => ({ ...current, health_check_type: event.target.value }))}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
-        >
-          <option value="ping">ping</option>
-          <option value="http">http</option>
-          <option value="https">https</option>
-          <option value="api">api</option>
-        </select>
-      </label>
-
-      <label className="text-sm text-slate-700 dark:text-slate-200">
         <span className="mb-2 block font-medium">Credential</span>
         <select
           value={form.credential_id}
@@ -243,6 +333,90 @@ export function NodeForm({
           ))}
         </select>
       </label>
+
+      <section className="md:col-span-2 rounded-[1.5rem] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#0B1020]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">Health checks</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Add one or more checks. The node status follows the worst enabled check.</p>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:border-ember hover:text-ember dark:border-slate-800 dark:bg-[#050814] dark:text-slate-200"
+            onClick={() => setHealthChecks((current) => [...current, defaultHealthCheck("ping", current.length)])}
+          >
+            <Plus className="h-4 w-4" />
+            Add check
+          </button>
+        </div>
+        <div className="mt-4 space-y-4">
+          {healthChecks.map((check, index) => (
+            <div key={check.client_id} className="rounded-2xl border border-slate-200 bg-panel p-4 dark:border-slate-800 dark:bg-[#050814]">
+              <div className="grid gap-3 md:grid-cols-[1.2fr_0.9fr_0.6fr_0.6fr_0.6fr_auto]">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Name
+                  <input
+                    value={check.name}
+                    onChange={(event) => updateHealthCheck(index, { name: event.target.value })}
+                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
+                  />
+                </label>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Type
+                  <select
+                    value={check.check_type}
+                    onChange={(event) => changeHealthCheckType(index, event.target.value)}
+                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
+                  >
+                    <option value="ping">ping</option>
+                    <option value="http">http</option>
+                    <option value="https">https</option>
+                    <option value="api">api</option>
+                    <option value="memory">memory</option>
+                    <option value="disk">disk</option>
+                    <option value="network">network</option>
+                  </select>
+                </label>
+                {[
+                  ["Interval", "interval_seconds"],
+                  ["Timeout", "timeout_seconds"],
+                  ["Retry", "retry_count"],
+                ].map(([label, key]) => (
+                  <label key={key} className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    {label}
+                    <input
+                      value={String((check as unknown as Record<string, string>)[key] ?? "")}
+                      onChange={(event) => updateHealthCheck(index, { [key]: event.target.value } as Partial<HealthCheckDraft>)}
+                      className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
+                    />
+                  </label>
+                ))}
+                <div className="flex items-end gap-2">
+                  <label className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={check.is_enabled}
+                      onChange={(event) => updateHealthCheck(index, { is_enabled: event.target.checked })}
+                      className="h-4 w-4 rounded border-slate-300 accent-ember"
+                    />
+                    Enabled
+                  </label>
+                  <button
+                    type="button"
+                    title="Remove check"
+                    disabled={healthChecks.length === 1}
+                    className="mb-1 grid h-9 w-9 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-rose-500 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-800 dark:bg-[#0B1020]"
+                    onClick={() => setHealthChecks((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <HealthCheckConfigFields check={check} index={index} onChange={updateHealthCheckConfig} />
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="md:col-span-2 rounded-[1.5rem] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#0B1020]">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -329,6 +503,68 @@ export function NodeForm({
         />
       ) : null}
     </form>
+  );
+}
+
+function HealthCheckConfigFields({
+  check,
+  index,
+  onChange,
+}: {
+  check: HealthCheckDraft;
+  index: number;
+  onChange: (index: number, key: string, value: string) => void;
+}) {
+  const fieldSets: Record<string, Array<[string, string, string]>> = {
+    ping: [["Host override", "host", "Leave blank to use node Host/IP"]],
+    http: [
+      ["URL", "url", "https://service.example.com"],
+      ["Health Path", "path", "/health"],
+      ["Expected Status", "expected_status_code", "200"],
+      ["Expected Text", "expected_response_contains", "optional response text"],
+    ],
+    https: [
+      ["URL", "url", "https://service.example.com"],
+      ["Health Path", "path", "/health"],
+      ["Expected Status", "expected_status_code", "200"],
+      ["Expected Text", "expected_response_contains", "optional response text"],
+    ],
+    api: [
+      ["Method", "method", "GET"],
+      ["URL", "url", "https://api.example.com"],
+      ["Health Path", "path", "/health"],
+      ["Expected Status", "expected_status_code", "200"],
+      ["Expected Text", "expected_response_contains", "optional response text"],
+    ],
+    memory: [
+      ["Warning %", "warning_percent", "80"],
+      ["Critical %", "critical_percent", "90"],
+    ],
+    disk: [
+      ["Path", "path", "/"],
+      ["Warning %", "warning_percent", "80"],
+      ["Critical %", "critical_percent", "90"],
+    ],
+    network: [
+      ["Interface", "interface", "eth0 or blank"],
+      ["Drop Threshold", "drop_threshold", "0"],
+    ],
+  };
+  const fields = fieldSets[check.check_type] ?? fieldSets.http;
+  return (
+    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {fields.map(([label, key, placeholder]) => (
+        <label key={key} className="text-xs font-medium text-slate-600 dark:text-slate-300">
+          {label}
+          <input
+            value={check.config_json[key] ?? ""}
+            placeholder={placeholder}
+            onChange={(event) => onChange(index, key, event.target.value)}
+            className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-ember dark:border-slate-800 dark:bg-[#0B1020] dark:text-white"
+          />
+        </label>
+      ))}
+    </div>
   );
 }
 

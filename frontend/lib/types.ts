@@ -80,13 +80,52 @@ export type FlockAgent = {
   policy_id?: number | null;
   policy_name?: string | null;
   enrollment_token_id?: number | null;
+  node_id?: number | null;
   status: string;
   last_seen_at?: string | null;
   enrolled_at: string;
+  unenrolled_at?: string | null;
   metadata_json: Record<string, unknown>;
+  latest_metrics?: Record<string, unknown> | null;
   pending_task_count: number;
   created_at: string;
   updated_at: string;
+};
+
+export type NodeHealthCheckDefinition = {
+  id: number;
+  node_id: number;
+  name: string;
+  check_type: string;
+  config_json: Record<string, unknown>;
+  interval_seconds: number;
+  timeout_seconds: number;
+  retry_count: number;
+  is_enabled: boolean;
+  sort_order: number;
+  current_status: string;
+  consecutive_failures: number;
+  last_run_at?: string | null;
+  last_success_at?: string | null;
+  last_failure_at?: string | null;
+  last_latency_ms?: number | null;
+  last_http_status?: number | null;
+  last_error_type?: string | null;
+  last_error_detail?: string | null;
+  last_response_excerpt?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NodeHealthCheckInput = {
+  name: string;
+  check_type: string;
+  config_json: Record<string, unknown>;
+  interval_seconds: number;
+  timeout_seconds: number;
+  retry_count: number;
+  is_enabled: boolean;
+  sort_order: number;
 };
 
 export type MetricBreakdownItem = {
@@ -117,6 +156,9 @@ export type DashboardMetrics = {
 
 export type HealthCheck = {
   id: number;
+  health_check_id?: number | null;
+  check_name?: string | null;
+  check_type?: string | null;
   status: string;
   success: boolean;
   latency_ms?: number | null;
@@ -312,6 +354,7 @@ export type AuditLogRecord = {
 export type NodeDetail = {
   node: NodeRecord;
   health_checks: HealthCheck[];
+  health_check_definitions: NodeHealthCheckDefinition[];
   incidents: Incident[];
   recommendations: Recommendation[];
   executions: ExecutionTask[];
