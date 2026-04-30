@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Node, utcnow
-from app.services.incident_workflow import run_and_record_health_check
+from app.services.incident_workflow import ensure_default_health_checks, process_health_result, run_and_record_health_check
+from app.services.health_checks import run_health_check
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -56,11 +57,23 @@ class MonitoringService:
             now = utcnow()
             nodes = db.query(Node).filter(Node.is_enabled.is_(True)).all()
             for node in nodes:
-                if not node.last_check_at:
+                checks = [check for check in ensure_default_health_checks(db, node) if check.is_enabled]
+                if not checks:
                     run_and_record_health_check(db, node)
                     continue
-                elapsed = (now - _as_utc(node.last_check_at)).total_seconds()
-                if elapsed >= node.check_interval_seconds:
+                due_checks = [
+                    check
+                    for check in checks
+                    if not check.last_run_at or (now - _as_utc(check.last_run_at)).total_seconds() >= check.interval_seconds
+                ]
+                if not due_checks:
+                    continue
+                if len(due_checks) == len(checks):
                     run_and_record_health_check(db, node)
+                    continue
+                for check in due_checks:
+                    result = run_health_check(node, check, db=db)
+                    process_health_result(db, node, result, health_check=check)
+                db.commit()
         finally:
             db.close()
