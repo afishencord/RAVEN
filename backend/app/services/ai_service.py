@@ -39,6 +39,14 @@ def _latest_output_excerpt(recent_history: list[dict], limit: int = 700) -> str:
     return ""
 
 
+KNOWN_HOSTS_WARNING_RE = re.compile(r"^Warning: Permanently added .+ to the list of known hosts\.\s*$")
+
+
+def _sanitize_execution_context_output(output: str) -> str:
+    lines = [line for line in output.splitlines() if not KNOWN_HOSTS_WARNING_RE.match(line.strip())]
+    return "\n".join(lines).strip()
+
+
 def _previous_proposal_ids(incident: Incident) -> set[str]:
     proposal_ids: set[str] = set()
     for recommendation in incident.recommendations or []:
@@ -133,7 +141,7 @@ def _fallback_commands(node: Node, incident: Incident, recent_history: list[dict
     return [
         {
             "proposal_id": _unique_proposal_id(f"{node.name}-{key}", existing_ids, f"{incident.id}:{key}"),
-            "title": title.replace("-", " ").title(),
+            "title": key.replace("-", " ").title(),
             "command": command,
             "rationale": f"{reason} Context: {subject}",
             "execution_mode": node.execution_mode,
@@ -492,7 +500,7 @@ class AIRecommendationService:
                 "status": task.status,
                 "approved_command": task.approved_command,
                 "exit_code": task.exit_code,
-                "output_excerpt": (task.output or "")[:6000],
+                "output_excerpt": _sanitize_execution_context_output(task.output or "")[:6000],
                 "post_validation_status": task.post_validation_status,
                 "queued_at": task.queued_at.isoformat(),
                 "finished_at": task.finished_at.isoformat() if task.finished_at else None,

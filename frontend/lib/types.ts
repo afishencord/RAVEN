@@ -138,6 +138,8 @@ export type TimeSeriesPoint = {
   value: number;
 };
 
+export type DashboardRange = "24h" | "7d" | "30d" | "365d";
+
 export type DashboardMetrics = {
   total_nodes: number;
   enabled_nodes: number;
@@ -152,6 +154,40 @@ export type DashboardMetrics = {
   environment_counts: MetricBreakdownItem[];
   failure_type_counts: MetricBreakdownItem[];
   successful_remediations_over_time: TimeSeriesPoint[];
+};
+
+export type PlatformSettings = {
+  organizationName: string;
+  modelProvider: string;
+  customModel: string;
+  modelEndpoint: string;
+  localAuthEnabled: boolean;
+  ldapEnabled: boolean;
+  ssoEnabled: boolean;
+  ldapUrl: string;
+  ldapBindDn: string;
+  ldapBaseDn: string;
+  ldapUserSearchBase: string;
+  ldapGroupSearchBase: string;
+  ldapUserFilter: string;
+  ldapGroupFilter: string;
+  ldapLoginAttribute: string;
+  ldapEmailAttribute: string;
+  ldapNameAttribute: string;
+  ldapMembershipAttribute: string;
+  ssoIssuer: string;
+  ssoClientId: string;
+  alertEmail: string;
+  webhookUrl: string;
+  retentionDays: number;
+  auditRetentionDays: number;
+  approvalMode: string;
+  maintenanceWindow: string;
+  requirePostValidation: boolean;
+  notifyOnResolution: boolean;
+  notifyOnLicenseWarning: boolean;
+  allowRunnerExecution: boolean;
+  updated_at?: string | null;
 };
 
 export type HealthCheck = {

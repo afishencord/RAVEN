@@ -26,6 +26,76 @@ class TokenResponse(BaseModel):
     user: UserRead
 
 
+class PlatformSettingsBase(BaseModel):
+    organizationName: str = "Acme Corporation"
+    modelProvider: str = "env_default"
+    customModel: str = "gpt-5.2"
+    modelEndpoint: str = ""
+    localAuthEnabled: bool = True
+    ldapEnabled: bool = False
+    ssoEnabled: bool = False
+    ldapUrl: str = ""
+    ldapBindDn: str = ""
+    ldapBaseDn: str = ""
+    ldapUserSearchBase: str = ""
+    ldapGroupSearchBase: str = ""
+    ldapUserFilter: str = ""
+    ldapGroupFilter: str = ""
+    ldapLoginAttribute: str = ""
+    ldapEmailAttribute: str = ""
+    ldapNameAttribute: str = ""
+    ldapMembershipAttribute: str = ""
+    ssoIssuer: str = ""
+    ssoClientId: str = ""
+    alertEmail: str = "ops@example.com"
+    webhookUrl: str = ""
+    retentionDays: int = Field(default=180, ge=1)
+    auditRetentionDays: int = Field(default=365, ge=1)
+    approvalMode: str = "Operator approval required"
+    maintenanceWindow: str = "Sunday 02:00-04:00"
+    requirePostValidation: bool = True
+    notifyOnResolution: bool = True
+    notifyOnLicenseWarning: bool = True
+    allowRunnerExecution: bool = True
+
+
+class PlatformSettingsRead(PlatformSettingsBase):
+    updated_at: datetime | None = None
+
+
+class PlatformSettingsUpdate(BaseModel):
+    organizationName: str | None = None
+    modelProvider: str | None = None
+    customModel: str | None = None
+    modelEndpoint: str | None = None
+    localAuthEnabled: bool | None = None
+    ldapEnabled: bool | None = None
+    ssoEnabled: bool | None = None
+    ldapUrl: str | None = None
+    ldapBindDn: str | None = None
+    ldapBaseDn: str | None = None
+    ldapUserSearchBase: str | None = None
+    ldapGroupSearchBase: str | None = None
+    ldapUserFilter: str | None = None
+    ldapGroupFilter: str | None = None
+    ldapLoginAttribute: str | None = None
+    ldapEmailAttribute: str | None = None
+    ldapNameAttribute: str | None = None
+    ldapMembershipAttribute: str | None = None
+    ssoIssuer: str | None = None
+    ssoClientId: str | None = None
+    alertEmail: str | None = None
+    webhookUrl: str | None = None
+    retentionDays: int | None = Field(default=None, ge=1)
+    auditRetentionDays: int | None = Field(default=None, ge=1)
+    approvalMode: str | None = None
+    maintenanceWindow: str | None = None
+    requirePostValidation: bool | None = None
+    notifyOnResolution: bool | None = None
+    notifyOnLicenseWarning: bool | None = None
+    allowRunnerExecution: bool | None = None
+
+
 class CredentialBase(BaseModel):
     name: str
     kind: str

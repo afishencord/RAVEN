@@ -175,7 +175,7 @@ export default function ReportsPage() {
 
   async function loadReportData() {
     const [metricData, nodeData, activeMessages, archivedMessages, logs] = await Promise.all([
-      apiFetch<DashboardMetrics>("/dashboard/metrics"),
+      apiFetch<DashboardMetrics>("/dashboard/metrics?range=30d"),
       apiFetch<NodeRecord[]>("/nodes"),
       apiFetch<MessageIncident[]>("/messages"),
       apiFetch<MessageIncident[]>("/messages?archived=true"),

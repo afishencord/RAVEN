@@ -28,6 +28,14 @@ class User(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class AppSetting(TimestampMixin, Base):
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    value_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class RemediationProfile(TimestampMixin, Base):
     __tablename__ = "remediation_profiles"
 

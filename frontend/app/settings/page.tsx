@@ -5,8 +5,8 @@ import { Save, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
-import { requireSession } from "@/lib/api";
-import { User } from "@/lib/types";
+import { apiFetch, requireSession } from "@/lib/api";
+import { PlatformSettings, User } from "@/lib/types";
 
 const modelProviders = [
   { value: "env_default", label: "Use default model from environment" },
@@ -28,7 +28,11 @@ const customModelOptions = [
 const approvalModes = ["Operator approval required", "Admin approval required", "Two-person approval"];
 const integrationRows = ["ServiceNow", "Slack", "Mattermost", "Microsoft Teams"];
 
-const defaultSettings = {
+type SettingsState = PlatformSettings & {
+  apiKeyOverride: string;
+};
+
+const defaultSettings: SettingsState = {
   organizationName: "Acme Corporation",
   modelProvider: "env_default",
   customModel: "gpt-5.2",
@@ -60,6 +64,7 @@ const defaultSettings = {
   notifyOnResolution: true,
   notifyOnLicenseWarning: true,
   allowRunnerExecution: true,
+  updated_at: null,
 };
 
 function FieldShell({ label, children }: { label: string; children: ReactNode }) {
@@ -114,6 +119,37 @@ export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [settings, setSettings] = useState(defaultSettings);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  async function loadSettings() {
+    const payload = await apiFetch<PlatformSettings>("/settings");
+    setSettings({ ...payload, apiKeyOverride: "" });
+    setSavedAt(payload.updated_at ?? null);
+  }
+
+  function persistedSettingsPayload() {
+    const { apiKeyOverride: _apiKeyOverride, updated_at: _updatedAt, ...payload } = settings;
+    return payload;
+  }
+
+  async function saveSettings() {
+    setSaving(true);
+    setError("");
+    try {
+      const payload = await apiFetch<PlatformSettings>("/settings", {
+        method: "PUT",
+        body: JSON.stringify(persistedSettingsPayload()),
+      });
+      setSettings((current) => ({ ...payload, apiKeyOverride: current.apiKeyOverride }));
+      setSavedAt(payload.updated_at ?? new Date().toISOString());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save settings");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   useEffect(() => {
     startTransition(() => {
@@ -123,6 +159,9 @@ export default function SettingsPage() {
           return;
         }
         setUser(session);
+        loadSettings()
+          .catch((err) => setError(err instanceof Error ? err.message : "Failed to load settings"))
+          .finally(() => setLoading(false));
       });
     });
   }, [router]);
@@ -141,12 +180,12 @@ export default function SettingsPage() {
       headerActions={
         <button
           type="button"
-          disabled={!canEdit}
+          disabled={!canEdit || loading || saving}
           className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#7C3AED] px-4 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(124,58,237,0.25)] transition hover:bg-[#6D28D9] disabled:opacity-50 dark:shadow-none"
-          onClick={() => setSavedAt(new Date().toISOString())}
+          onClick={saveSettings}
         >
           <Save className="h-4 w-4" />
-          Save changes
+          {saving ? "Saving..." : "Save changes"}
         </button>
       }
     >
@@ -158,6 +197,9 @@ export default function SettingsPage() {
           </span>
           <span>{savedAt ? `Saved ${new Date(savedAt).toLocaleString()}` : "No changes saved in this session"}</span>
         </div>
+
+        {error ? <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">{error}</p> : null}
+        {loading ? <p className="text-sm text-slate-600 dark:text-slate-300">Loading settings...</p> : null}
 
         <section className="overflow-hidden rounded-[2rem] border border-[#E5E7EB] bg-white shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none">
           <SettingsSection title="AI Model">

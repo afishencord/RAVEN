@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
@@ -11,6 +11,37 @@ from app.models import ApprovalDecision, ExecutionTask, Incident, Node, User, ut
 from app.schemas import DashboardMetricsRead, MetricBreakdownItem, TimeSeriesPoint
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+DashboardRange = str
+
+
+def _range_start(range_key: DashboardRange):
+    now = utcnow()
+    if range_key == "7d":
+        return now - timedelta(days=7)
+    if range_key == "30d":
+        return now - timedelta(days=30)
+    if range_key == "365d":
+        return now - timedelta(days=365)
+    return now - timedelta(hours=24)
+
+
+def _remediation_buckets(range_key: DashboardRange):
+    now = utcnow()
+    if range_key == "24h":
+        current_hour = now.replace(minute=0, second=0, microsecond=0)
+        buckets = [
+            (current_hour - timedelta(hours=23 - offset)).isoformat()
+            for offset in range(24)
+        ]
+        return buckets, lambda value: value.replace(minute=0, second=0, microsecond=0).isoformat()
+
+    if range_key == "365d":
+        day_count = 365
+    else:
+        day_count = 30 if range_key == "30d" else 7
+    window_start = now.date() - timedelta(days=day_count - 1)
+    buckets = [(window_start + timedelta(days=offset)).isoformat() for offset in range(day_count)]
+    return buckets, lambda value: value.date().isoformat()
 
 
 def _breakdown(rows: list[tuple[str | None, int]], fallback_label: str = "Unknown") -> list[MetricBreakdownItem]:
@@ -21,24 +52,47 @@ def _breakdown(rows: list[tuple[str | None, int]], fallback_label: str = "Unknow
 
 
 @router.get("/metrics", response_model=DashboardMetricsRead)
-def get_dashboard_metrics(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    now = utcnow()
-    window_start = now.date() - timedelta(days=13)
+def get_dashboard_metrics(
+    range_key: DashboardRange = Query(default="24h", alias="range", pattern="^(24h|7d|30d|365d)$"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    window_start = _range_start(range_key)
+    bucket_keys, bucket_key_for = _remediation_buckets(range_key)
 
     total_nodes = db.query(func.count(Node.id)).scalar() or 0
     enabled_nodes = db.query(func.count(Node.id)).filter(Node.is_enabled.is_(True)).scalar() or 0
-    active_incidents = db.query(func.count(Incident.id)).filter(Incident.is_active.is_(True), Incident.archived_at.is_(None)).scalar() or 0
-    resolved_incidents = db.query(func.count(Incident.id)).filter(Incident.resolved_at.isnot(None)).scalar() or 0
+    active_incidents = (
+        db.query(func.count(Incident.id))
+        .filter(
+            Incident.is_active.is_(True),
+            Incident.archived_at.is_(None),
+            Incident.last_failure_at >= window_start,
+        )
+        .scalar()
+        or 0
+    )
+    resolved_incidents = (
+        db.query(func.count(Incident.id))
+        .filter(Incident.resolved_at.isnot(None), Incident.resolved_at >= window_start)
+        .scalar()
+        or 0
+    )
     successful_remediations = (
         db.query(func.count(ExecutionTask.id))
-        .filter(ExecutionTask.status == "success", ExecutionTask.post_validation_status == "healthy")
+        .filter(
+            ExecutionTask.status == "success",
+            ExecutionTask.post_validation_status == "healthy",
+            ExecutionTask.finished_at.isnot(None),
+            ExecutionTask.finished_at >= window_start,
+        )
         .scalar()
         or 0
     )
 
     resolved_rows = (
         db.query(Incident.started_at, Incident.resolved_at)
-        .filter(Incident.resolved_at.isnot(None))
+        .filter(Incident.resolved_at.isnot(None), Incident.resolved_at >= window_start)
         .limit(500)
         .all()
     )
@@ -66,15 +120,16 @@ def get_dashboard_metrics(db: Session = Depends(get_db), _: User = Depends(get_c
             ExecutionTask.status == "success",
             ExecutionTask.post_validation_status == "healthy",
             ExecutionTask.finished_at.isnot(None),
+            ExecutionTask.finished_at >= window_start,
         )
         .all()
     )
     remediation_counts_by_day: dict[str, int] = {
-        (window_start + timedelta(days=offset)).isoformat(): 0
-        for offset in range(14)
+        bucket_key: 0
+        for bucket_key in bucket_keys
     }
     for (finished_at,) in successful_executions:
-        date_key = finished_at.date().isoformat()
+        date_key = bucket_key_for(finished_at)
         if date_key in remediation_counts_by_day:
             remediation_counts_by_day[date_key] += 1
 
@@ -88,11 +143,13 @@ def get_dashboard_metrics(db: Session = Depends(get_db), _: User = Depends(get_c
         node_state_counts=node_state_counts,
         execution_status_counts=_breakdown(
             db.query(ExecutionTask.status, func.count(ExecutionTask.id))
+            .filter(ExecutionTask.queued_at >= window_start)
             .group_by(ExecutionTask.status)
             .all()
         ),
         approval_decision_counts=_breakdown(
             db.query(ApprovalDecision.decision, func.count(ApprovalDecision.id))
+            .filter(ApprovalDecision.decided_at >= window_start)
             .group_by(ApprovalDecision.decision)
             .all()
         ),
@@ -108,6 +165,7 @@ def get_dashboard_metrics(db: Session = Depends(get_db), _: User = Depends(get_c
         ),
         failure_type_counts=_breakdown(
             db.query(Incident.failure_type, func.count(Incident.id))
+            .filter(or_(Incident.started_at >= window_start, Incident.last_failure_at >= window_start))
             .group_by(Incident.failure_type)
             .order_by(func.count(Incident.id).desc())
             .limit(5)
