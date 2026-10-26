@@ -156,6 +156,10 @@ Important values:
 
 Docker Compose overrides `DATABASE_URL` to `sqlite:////data/raven.db` so backend, runner, and Flock share state through the `raven-data` volume.
 
+## Isolated Local Verification
+
+For disposable, loopback-only dependency/runtime checks without Docker, see [LOCAL_VERIFICATION.md](./LOCAL_VERIFICATION.md). The smoke deployment uses a temporary database and fresh private test secrets, disables monitoring and AI, never starts an execution runner or agent, and stops its services after verification.
+
 ## Docker Compose Deployment
 
 The intended local deployment path is Docker Compose.

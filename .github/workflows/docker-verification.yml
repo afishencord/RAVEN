@@ -1,0 +1,31 @@
+name: Disposable Docker verification
+
+on:
+  push:
+    branches: [security/dependency-refresh-2026-10]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-verification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      # Official v7.0.1 release, verified against actions/checkout on 2026-10-26.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Test the safety harness
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: Build images and verify disposable Compose deployment
+        run: python3 scripts/docker_smoke.py --state-dir "$RUNNER_TEMP/raven-docker-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+      - name: Always remove disposable services, volumes and secrets
+        if: always()
+        run: python3 scripts/docker_smoke.py --cleanup --state-dir "$RUNNER_TEMP/raven-docker-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
