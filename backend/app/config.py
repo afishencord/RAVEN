@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -10,7 +11,9 @@ class Settings(BaseSettings):
     debug: bool = True
     database_url: str = "sqlite:///./raven.db"
     jwt_secret_key: str = "change-me-in-env"
-    jwt_algorithm: str = "HS256"
+    # This app uses one shared secret to issue and verify access tokens. Do not
+    # mix asymmetric key algorithms into that configuration or accept "none".
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = 60 * 12
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"

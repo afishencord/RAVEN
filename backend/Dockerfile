@@ -9,8 +9,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends iputils-ping curl openssh-client sshpass \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.in requirements.txt ./
+RUN pip install --no-cache-dir --require-hashes --only-binary=:all: -r requirements.txt
 
 COPY app ./app
 
