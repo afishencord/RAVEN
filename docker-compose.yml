@@ -8,11 +8,10 @@ services:
     environment:
       DATABASE_URL: sqlite:////data/raven.db
       FRONTEND_ORIGIN: http://localhost:3000
-      EMBEDDED_MONITORING: "true"
+      EMBEDDED_MONITORING: ${EMBEDDED_MONITORING:-false}
       FLOCK_SERVER_URL: http://flock:8000/api/flock
-      FLOCK_INTERNAL_TOKEN: dev-flock-internal-token
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - raven-data:/data
     restart: unless-stopped
@@ -29,7 +28,6 @@ services:
       FRONTEND_ORIGIN: http://localhost:3000
       EMBEDDED_MONITORING: "false"
       FLOCK_SERVER_URL: http://flock:8000/api/flock
-      FLOCK_INTERNAL_TOKEN: dev-flock-internal-token
     depends_on:
       - backend
       - flock
@@ -47,8 +45,6 @@ services:
     environment:
       DATABASE_URL: sqlite:////data/raven.db
       EMBEDDED_MONITORING: "false"
-      FLOCK_INTERNAL_TOKEN: dev-flock-internal-token
-      FLOCK_ENROLLMENT_TOKEN: dev-flock-enrollment-token
     depends_on:
       - backend
     volumes:
@@ -56,14 +52,15 @@ services:
     restart: unless-stopped
 
   flock-test:
+    profiles: ["agent"]
     build:
       context: ./backend
     container_name: flock-test
+    hostname: flock-test
     command: ["python", "-m", "app.services.flock_agent"]
     environment:
-      DATABASE_URL: sqlite:////data/raven.db
       FLOCK_SERVER_URL: http://flock:8000/api/flock
-      FLOCK_ENROLLMENT_TOKEN: dev-flock-enrollment-token
+      FLOCK_ENROLLMENT_TOKEN: ${FLOCK_ENROLLMENT_TOKEN:-}
       FLOCK_AGENT_NAME: flock-test
       FLOCK_AGENT_STATE_PATH: /agent-state/flock-agent-state.json
     depends_on:
@@ -83,7 +80,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     restart: unless-stopped
 
 volumes:

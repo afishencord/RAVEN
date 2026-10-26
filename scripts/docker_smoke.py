@@ -65,7 +65,7 @@ def execute(command, phase, *, timeout=180, allow_failure=False, build_redaction
 def compose(state):
     meta = json.loads((state / "state.json").read_text())
     check(re.fullmatch(r"raven-smoke-[a-f0-9]{16}", meta.get("project", "")), "Invalid cleanup project marker")
-    return DOCKER + ["compose", "--project-directory", str(ROOT), "--project-name", meta["project"], "--env-file", str(state / "test.env"), "-f", str(ROOT / "docker-compose.yml"), "-f", str(state / "override.yml")]
+    return DOCKER + ["compose", "--profile", "agent", "--project-directory", str(ROOT), "--project-name", meta["project"], "--env-file", str(state / "test.env"), "-f", str(ROOT / "docker-compose.yml"), "-f", str(state / "override.yml")]
 
 
 def render_override(state, project):
@@ -77,7 +77,8 @@ def render_override(state, project):
         if service == "frontend":
             lines += ["    env_file: !override []", "    environment: !override", "      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000/api", '      NEXT_TELEMETRY_DISABLED: "1"', "    build:", "      args:", "        NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000/api", '    ports: !override ["127.0.0.1:3000:3000"]']
         else:
-            lines += [f"    env_file: !override [{json.dumps(str(state / 'test.env'))}]"]
+            env_file = "agent.env" if service == "flock-test" else "test.env"
+            lines += [f"    env_file: !override [{json.dumps(str(state / env_file))}]"]
             if service != "backend":
                 lines += ["    ports: !override []"]
             if service != "flock-test":
@@ -105,11 +106,18 @@ def validate_config(model, state):
         check(all(port.get("host_ip") == "127.0.0.1" for port in ports), "Non-loopback listener")
         check(set(service.get("networks", {})) == {"default"}, "Unexpected runtime network")
         env = service.get("environment", {})
-        if name != "frontend":
+        if name == "flock-test":
+            check(set(env) == {"FLOCK_SERVER_URL", "FLOCK_ENROLLMENT_TOKEN", "FLOCK_AGENT_NAME", "FLOCK_AGENT_STATE_PATH"}, "Agent must not receive control-plane secrets")
+            check(len(env.get("FLOCK_ENROLLMENT_TOKEN", "")) >= 40 and not env["FLOCK_ENROLLMENT_TOKEN"].startswith("dev-"), "Fresh agent enrollment secret missing")
+            check(env.get("FLOCK_SERVER_URL") == "http://flock:8000/api/flock", "Unexpected agent broker")
+            check(env.get("FLOCK_AGENT_NAME") == "disposable-docker-agent" and env.get("FLOCK_AGENT_STATE_PATH") == "/agent-state/flock-agent-state.json", "Unexpected agent fixture")
+        elif name != "frontend":
             check(env.get("EMBEDDED_MONITORING") == "false" and env.get("OPENAI_API_KEY") == "", "Monitoring/AI must be disabled")
             check(env.get("DATABASE_URL") == "sqlite:////data/raven.db", "Unexpected database URL")
-            for key in ("JWT_SECRET_KEY", "FLOCK_INTERNAL_TOKEN", "FLOCK_ENROLLMENT_TOKEN"):
+            for key in ("JWT_SECRET_KEY", "FLOCK_INTERNAL_TOKEN", "FLOCK_ENROLLMENT_TOKEN", "BOOTSTRAP_ADMIN_PASSWORD"):
                 check(len(env.get(key, "")) >= 40 and not env[key].startswith("dev-"), "Fresh secrets missing")
+            check(env.get("BOOTSTRAP_ADMIN_USERNAME") == "admin", "Unexpected bootstrap administrator")
+            check(env.get("SSH_KNOWN_HOSTS_PATH") == "", "SSH trust must not be inherited")
         for mount in service.get("volumes", []):
             if mount["type"] == "bind":
                 check(mount.get("read_only") is True, "Test inputs must be read-only")
@@ -123,9 +131,12 @@ def prepare(state):
     try:
         project = "raven-smoke-" + secrets.token_hex(8)
         (state / "state.json").write_text(json.dumps({"project": project}))
-        values = {"RAVEN_DISPOSABLE_SMOKE": "1", "DATABASE_URL": "sqlite:////data/raven.db", "JWT_SECRET_KEY": secrets.token_urlsafe(48), "JWT_ALGORITHM": "HS256", "FLOCK_INTERNAL_TOKEN": secrets.token_urlsafe(48), "FLOCK_ENROLLMENT_TOKEN": secrets.token_urlsafe(48), "FLOCK_SERVER_URL": "http://flock:8000/api/flock", "FRONTEND_ORIGIN": "http://127.0.0.1:3000", "EMBEDDED_MONITORING": "false", "OPENAI_API_KEY": "", "DEBUG": "false", "RUNNER_POLL_SECONDS": "1"}
+        passwords = {role: secrets.token_urlsafe(48) for role in ("admin", "operator", "viewer")}
+        values = {"BOOTSTRAP_ADMIN_USERNAME": "admin", "BOOTSTRAP_ADMIN_PASSWORD": passwords["admin"], "SSH_KNOWN_HOSTS_PATH": "", "RAVEN_DISPOSABLE_SMOKE": "1", "DATABASE_URL": "sqlite:////data/raven.db", "JWT_SECRET_KEY": secrets.token_urlsafe(48), "JWT_ALGORITHM": "HS256", "FLOCK_INTERNAL_TOKEN": secrets.token_urlsafe(48), "FLOCK_ENROLLMENT_TOKEN": secrets.token_urlsafe(48), "FLOCK_SERVER_URL": "http://flock:8000/api/flock", "FRONTEND_ORIGIN": "http://127.0.0.1:3000", "EMBEDDED_MONITORING": "false", "OPENAI_API_KEY": "", "DEBUG": "false", "RUNNER_POLL_SECONDS": "1"}
         (state / "test.env").write_text("".join(f"{key}={value}\n" for key, value in values.items()))
-        (state / "passwords.json").write_text(json.dumps({role: secrets.token_urlsafe(48) for role in ("admin", "operator", "viewer")}))
+        agent_values = {key: values[key] for key in ("FLOCK_SERVER_URL", "FLOCK_ENROLLMENT_TOKEN")}
+        (state / "agent.env").write_text("".join(f"{key}={value}\n" for key, value in agent_values.items()))
+        (state / "passwords.json").write_text(json.dumps(passwords))
         # The enclosing host directory stays 0700. The read-only individual bind
         # must be readable by container root after dropping DAC_OVERRIDE.
         (state / "passwords.json").chmod(0o444)
@@ -300,8 +311,8 @@ def run(state):
         print(f"PASS: backend container unit suite ({count.group(1) if count else 'all'} tests)", flush=True)
         execute(command + ["run", "--rm", "--no-deps", "-T", "frontend", "sh", "-c", "npm run typecheck && npm test"], "frontend container typecheck/unit tests", timeout=180)
         print("PASS: frontend container typecheck, dependency/CSS/native Sharp unit tests", flush=True)
-        execute(command + ["run", "--rm", "--no-deps", "-T", "backend", "python", "/checks/container_checks.py", "seed"], "pre-listener random account seeding", check_diagnostics=True)
-        print("PASS: random users seeded before opening listeners", flush=True)
+        execute(command + ["run", "--rm", "--no-deps", "-T", "backend", "python", "/checks/container_checks.py", "seed"], "pre-listener secure administrator bootstrap", check_diagnostics=True)
+        print("PASS: secure bootstrap and random role fixtures created before opening listeners", flush=True)
         started = True
         execute(command + ["up", "--detach", "--no-build", "backend", "flock", "runner", "frontend"], "Compose deployment")
         snapshots = inspect_services(command, ("backend", "flock", "runner", "frontend"))

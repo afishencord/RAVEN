@@ -4,19 +4,21 @@ import json
 import logging
 import os
 import platform
-import shlex
 import socket
+import stat
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from app.config import get_settings
+from app.config import get_agent_settings
+from app.services.flock_policy import FlockPolicyError, authorize_command, policy_timeout
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+settings = get_agent_settings()
 
 
 def _server_url() -> str:
@@ -29,19 +31,43 @@ def _state_path() -> Path:
 
 def _load_state() -> dict[str, Any] | None:
     path = _state_path()
-    if not path.exists():
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
         return None
     try:
-        return json.loads(path.read_text())
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("state must be a regular file, not a symlink")
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | os.O_NONBLOCK)
+        with os.fdopen(fd, "r") as state_file:
+            metadata = os.fstat(state_file.fileno())
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077:
+                raise ValueError("state must be a private regular file (mode 0600)")
+            if metadata.st_uid != os.geteuid():
+                raise ValueError("state must be owned by the agent account")
+            state = json.load(state_file)
+        if not isinstance(state, dict) or not all(isinstance(state.get(key), str) and state[key] for key in ("agent_id", "agent_token")):
+            raise ValueError("state is missing its agent identity or credential")
+        return state
     except Exception as exc:
-        logger.warning("Unable to read Flock agent state: %s", exc)
-        return None
+        # Never turn a damaged/insecure credential file into a fresh enrollment.
+        raise RuntimeError(f"Unable to securely load Flock state at {path}; restore valid private state or request administrator recovery") from exc
 
 
 def _save_state(state: dict[str, Any]) -> None:
     path = _state_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, indent=2))
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, temporary_path = tempfile.mkstemp(prefix=".flock-state-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as state_file:
+            os.fchmod(state_file.fileno(), 0o600)
+            json.dump(state, state_file, indent=2)
+            state_file.flush()
+            os.fsync(state_file.fileno())
+        # Replaces the directory entry, never follows a destination symlink.
+        os.replace(temporary_path, path)
+    finally:
+        Path(temporary_path).unlink(missing_ok=True)
 
 
 def _agent_name() -> str:
@@ -211,13 +237,16 @@ def _claim_task(client: httpx.Client, state: dict[str, Any]) -> dict[str, Any] |
     return response.json()
 
 
-def _execute(command: str, timeout_seconds: int) -> tuple[int, str]:
+def _execute(command: str, timeout_seconds: int, policy: Any = None) -> tuple[int, str]:
     try:
-        args = shlex.split(command)
-        if args and args[0] != "sudo" and hasattr(os, "geteuid") and os.geteuid() != 0 and _sudo_available():
-            args = ["sudo", "-n", *args]
+        args = authorize_command(policy, command)
+        if type(timeout_seconds) is not int or timeout_seconds < 1:
+            raise FlockPolicyError("Task timeout must be a positive integer")
+        timeout_seconds = min(timeout_seconds, policy_timeout(policy))
         completed = subprocess.run(
             args,
+            shell=False,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
@@ -225,12 +254,22 @@ def _execute(command: str, timeout_seconds: int) -> tuple[int, str]:
         )
         output = "\n".join(filter(None, [completed.stdout, completed.stderr])).strip()
         return completed.returncode, output
+    except FlockPolicyError as exc:
+        return 126, f"Flock policy denied command: {exc}"
     except subprocess.TimeoutExpired:
         return 124, f"Execution timed out after {timeout_seconds} seconds."
     except FileNotFoundError as exc:
         return 127, str(exc)
     except Exception as exc:
         return 1, str(exc)
+
+
+def _execute_task(task: dict[str, Any]) -> tuple[int, str]:
+    if task.get("task_type") != "command":
+        return 126, "Flock policy denied unsupported task type"
+    # Never fall back to the heartbeat policy: it may predate a revocation.
+    # Older brokers without a claim-time policy snapshot fail closed.
+    return _execute(task.get("command"), task.get("timeout_seconds"), task.get("policy"))
 
 
 def _submit_result(client: httpx.Client, state: dict[str, Any], task_id: int, exit_code: int, output: str) -> None:
@@ -264,7 +303,7 @@ def run_agent() -> None:
         while True:
             try:
                 heartbeat = _heartbeat(client, state)
-                policy = heartbeat.get("policy", {})
+                policy = heartbeat.get("policy") or {}
                 task = _claim_task(client, state)
                 if task:
                     logger.info("Executing Flock task %s", task["id"])
@@ -273,12 +312,12 @@ def run_agent() -> None:
                         _remove_state()
                         logger.info("Flock agent unenrolled; exiting.")
                         return
-                    exit_code, output = _execute(task["command"], int(task.get("timeout_seconds") or policy.get("task_timeout_seconds") or 60))
+                    exit_code, output = _execute_task(task)
                     _submit_result(client, state, int(task["id"]), exit_code, output)
                 time.sleep(int(policy.get("heartbeat_interval_seconds") or 10))
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 401:
-                    logger.error("Flock agent credentials were rejected; remove %s to re-enroll.", _state_path())
+                    logger.error("Flock agent credentials were rejected; restore valid state at %s or request administrator recovery. Enrollment tokens cannot replace an existing identity.", _state_path())
                 else:
                     logger.warning("Flock agent HTTP error: %s", exc)
                 time.sleep(5)

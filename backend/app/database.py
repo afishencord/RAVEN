@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import get_settings
+from app.services.flock_identity_migration import migrate_flock_agent_identities
 
 settings = get_settings()
 
@@ -56,6 +57,7 @@ def migrate_sqlite_schema() -> None:
             for column, statement in additions.items():
                 if column not in existing:
                     connection.execute(text(statement))
+        migrate_flock_agent_identities(engine)
 
     if "flock_tasks" in inspector.get_table_names():
         existing = {column["name"] for column in inspector.get_columns("flock_tasks")}

@@ -6,34 +6,29 @@ from datetime import timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_password_hash, verify_password
 from app.database import SessionLocal
 from app.models import FlockAgent, FlockEnrollmentToken, FlockMetric, FlockPolicy, FlockTask, Node, NodeHealthCheck, utcnow
 from app.schemas import FlockAgentRead, FlockPolicyRead
+from app.services.flock_identity import identity_key
 
 
 def generate_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def default_policy(db: Session) -> FlockPolicy:
-    policy = (
+def default_policy(db: Session) -> FlockPolicy | None:
+    # Only enrollment may select a default. Existing agents never silently
+    # switch policy when their assigned policy is deleted or disabled.
+    return (
         db.query(FlockPolicy)
         .filter(FlockPolicy.is_default.is_(True), FlockPolicy.is_enabled.is_(True))
         .order_by(FlockPolicy.id.asc())
         .first()
     )
-    if policy:
-        return policy
-    policy = db.query(FlockPolicy).filter(FlockPolicy.is_enabled.is_(True)).order_by(FlockPolicy.id.asc()).first()
-    if policy:
-        return policy
-    policy = FlockPolicy(name="Default Linux/Unix Policy", is_default=True)
-    db.add(policy)
-    db.flush()
-    return policy
 
 
 def serialize_policy(db: Session, policy: FlockPolicy) -> FlockPolicyRead:
@@ -81,6 +76,8 @@ def serialize_agent(db: Session, agent: FlockAgent) -> FlockAgentRead:
 
 
 def find_enrollment_token(db: Session, token_value: str) -> FlockEnrollmentToken | None:
+    if not token_value or len(token_value.encode("utf-8")) > 72:
+        return None
     tokens = db.query(FlockEnrollmentToken).filter(FlockEnrollmentToken.is_enabled.is_(True)).all()
     for token in tokens:
         if verify_password(token_value, token.token_hash):
@@ -90,7 +87,7 @@ def find_enrollment_token(db: Session, token_value: str) -> FlockEnrollmentToken
 
 def authenticate_agent(db: Session, agent_id: str, bearer_token: str) -> FlockAgent:
     agent = db.query(FlockAgent).filter(FlockAgent.agent_id == agent_id).first()
-    if not agent or not verify_password(bearer_token, agent.token_hash):
+    if not bearer_token or len(bearer_token.encode("utf-8")) > 72 or not agent or not verify_password(bearer_token, agent.token_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent credentials")
     if agent.status == "unenrolled":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Flock agent is unenrolled")
@@ -123,7 +120,7 @@ def sync_inventory_node(db: Session, agent: FlockAgent) -> Node:
             execution_mode="agent",
             execution_target=f"flock:{agent.agent_id}",
             context_text=f"Linux/Unix host enrolled through Flock agent {agent.name}.",
-            approved_command_policy="Use sudo-backed diagnostics and targeted remediation commands only.",
+            approved_command_policy="Use only complete absolute-path commands explicitly authorized by the assigned Flock policy; shells and implicit sudo are unavailable.",
             current_status="healthy",
             is_enabled=True,
         )
@@ -164,21 +161,36 @@ def create_agent(
     version: str,
     metadata_json: dict,
     enrollment_token: FlockEnrollmentToken,
+    existing_agent_id: str | None = None,
+    existing_agent_token: str | None = None,
 ) -> tuple[FlockAgent, str]:
+    try:
+        name_key = identity_key(name)
+        hostname_key = identity_key(hostname, hostname=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if existing_agent_id:
+        agent = authenticate_agent(db, existing_agent_id, existing_agent_token or "")
+        if agent.status == "unenroll_pending":
+            raise HTTPException(status_code=409, detail="Flock agent unenrollment is pending")
+        if agent.name_key != name_key or agent.hostname_key != hostname_key:
+            raise HTTPException(status_code=409, detail="Authenticated rejoin cannot change the agent identity")
+        # Idempotent rejoin: proof does not rotate credentials, rebind queued
+        # tasks, override an administrator's policy, or replace host metadata.
+        return agent, existing_agent_token
+    if existing_agent_token:
+        raise HTTPException(status_code=401, detail="An existing agent ID is required for authenticated rejoin")
+    collision = db.query(FlockAgent.id).filter(
+        (FlockAgent.name_key == name_key) | (FlockAgent.hostname_key == hostname_key)
+    ).first()
+    if collision:
+        raise HTTPException(status_code=409, detail="Flock agent name or hostname is already enrolled; existing agent proof or administrator recovery is required")
+    policy = enrollment_token.policy if enrollment_token.policy_id is not None else default_policy(db)
+    if not policy or policy.is_enabled is not True:
+        raise HTTPException(status_code=403, detail="Enrollment requires an enabled Flock policy")
     agent_token = generate_token()
-    policy = enrollment_token.policy or default_policy(db)
-    agent = (
-        db.query(FlockAgent)
-        .filter(FlockAgent.name == name, FlockAgent.hostname == hostname)
-        .order_by(FlockAgent.id.desc())
-        .first()
-    )
-    if not agent:
-        agent = FlockAgent(agent_id=secrets.token_hex(12), name=name, hostname=hostname)
-        db.add(agent)
-    agent.agent_id = secrets.token_hex(12)
-    agent.name = name
-    agent.hostname = hostname
+    agent = FlockAgent(agent_id=secrets.token_hex(12), name=name.strip(), hostname=hostname.strip())
+    db.add(agent)
     agent.platform = platform
     agent.architecture = architecture
     agent.version = version
@@ -191,7 +203,13 @@ def create_agent(
     agent.unenrolled_at = None
     agent.metadata_json = metadata_json
     enrollment_token.last_used_at = utcnow()
-    db.flush()
+    try:
+        # Database uniqueness closes the concurrent check-then-insert race,
+        # even for requests using different enrollment tokens/processes.
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Flock agent identity conflict; no existing agent was replaced") from exc
     sync_inventory_node(db, agent)
     return agent, agent_token
 
@@ -231,11 +249,21 @@ def resolve_agent_target(db: Session, target: str) -> FlockAgent | None:
     if not normalized:
         return None
     query = db.query(FlockAgent).filter(FlockAgent.status != "unenrolled")
+    # Canonical inventory targets contain the immutable public ID. Display
+    # aliases remain compatible only when they identify exactly one agent.
+    agent = query.filter(FlockAgent.agent_id == normalized).first()
+    if agent:
+        return agent
+    try:
+        name_key = identity_key(normalized)
+        hostname_key = identity_key(normalized, hostname=True)
+    except ValueError:
+        return None
+    aliases = (FlockAgent.name_key == name_key) | (FlockAgent.hostname_key == hostname_key)
     if normalized.isdigit():
-        agent = query.filter(FlockAgent.id == int(normalized)).first()
-        if agent:
-            return agent
-    return query.filter((FlockAgent.agent_id == normalized) | (FlockAgent.name == normalized) | (FlockAgent.hostname == normalized)).first()
+        aliases = aliases | (FlockAgent.id == int(normalized))
+    matches = query.filter(aliases).limit(2).all()
+    return matches[0] if len(matches) == 1 else None
 
 
 def wait_for_task_result(db: Session, task: FlockTask, timeout_seconds: int, poll_seconds: int) -> FlockTask:

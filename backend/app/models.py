@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.services.flock_identity import identity_key
 
 
 def utcnow() -> datetime:
@@ -404,6 +405,8 @@ class FlockAgent(TimestampMixin, Base):
     agent_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128), index=True)
     hostname: Mapped[str] = mapped_column(String(255))
+    name_key: Mapped[str] = mapped_column(String(512), unique=True, index=True)
+    hostname_key: Mapped[str] = mapped_column(String(512), unique=True, index=True)
     platform: Mapped[str] = mapped_column(String(64), default="linux")
     architecture: Mapped[str] = mapped_column(String(64), default="unknown")
     version: Mapped[str] = mapped_column(String(64), default="dev")
@@ -421,6 +424,13 @@ class FlockAgent(TimestampMixin, Base):
     enrollment_token: Mapped["FlockEnrollmentToken | None"] = relationship()
     node: Mapped["Node | None"] = relationship()
     tasks: Mapped[list["FlockTask"]] = relationship(back_populates="agent", cascade="all, delete-orphan")
+
+
+@event.listens_for(FlockAgent, "before_insert")
+@event.listens_for(FlockAgent, "before_update")
+def _set_agent_identity_keys(mapper, connection, agent: FlockAgent) -> None:
+    agent.name_key = identity_key(agent.name)
+    agent.hostname_key = identity_key(agent.hostname, hostname=True)
 
 
 class FlockMetric(Base):

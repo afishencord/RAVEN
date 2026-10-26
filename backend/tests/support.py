@@ -9,6 +9,16 @@ import os
 TEST_KEY = "public-test-fixture-not-a-deployment-secret-0123456789-abcdefghijklmnop"
 TEST_PASSWORD = "public-test-password"
 
+# Read config definitions only (no settings instantiated), disable dotenv, and
+# clear every app-owned field so tests never consume a real deployment's config.
+from app.config import AgentSettings, EnvironmentSettings, Settings
+
+for settings_type in (EnvironmentSettings, AgentSettings, Settings):
+    settings_type.model_config["env_file"] = None
+for key in list(os.environ):
+    if key.casefold() in Settings.model_fields:
+        os.environ.pop(key, None)
+
 # Set before importing app modules, which cache settings at import time.
 os.environ.update(
     DATABASE_URL="sqlite://",
@@ -16,7 +26,9 @@ os.environ.update(
     JWT_ALGORITHM="HS256",
     OPENAI_API_KEY="",
     EMBEDDED_MONITORING="false",
-    FLOCK_ENROLLMENT_TOKEN="public-test-enrollment-token",
+    FLOCK_INTERNAL_TOKEN="public-test-internal-token-not-a-deployment-secret",
+    FLOCK_ENROLLMENT_TOKEN="public-test-enrollment-token-not-a-deployment-secret",
+    SSH_KNOWN_HOSTS_PATH="",
     FRONTEND_ORIGIN="http://localhost:3000",
 )
 

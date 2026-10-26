@@ -19,10 +19,10 @@ The public API URL is compiled into the frontend bundle: setting it only when st
 ## Isolation and cleanup
 
 - Binds only `127.0.0.1:8000` (API), `127.0.0.1:8001` (Flock broker), and `127.0.0.1:3000` (frontend). Occupied ports cause an error rather than replacing an existing service.
-- Creates a private temporary directory and SQLite database. Existing application data and environment files are not modified.
-- Generates fresh JWT/Flock secrets and random passwords for all three test roles. Users are created **before seeding or opening any listener**, so known demo passwords never work in this database. Secrets are neither printed nor written to repository files.
+- Requires a clean checkout without a root `.env` or frontend `.env*` files. Clears inherited application, proxy, SSH and interpreter-hook environment settings. Creates a private temporary directory and SQLite database; existing application data is never used or modified.
+- Generates fresh JWT/Flock secrets and random passwords. Exercises the real secure `seed_data` bootstrap against an empty database, asserting that only the configured administrator exists and no demo infrastructure credential is created. Adds operator/viewer fixtures **before opening any listener**. Secrets are neither printed nor written to repository files.
 - Sets `EMBEDDED_MONITORING=false` and clears `OPENAI_API_KEY`; disables test nodes/checks. Does not launch the runner or a Flock agent, invoke SSH, probe external nodes, request AI output, or dispatch an executable command.
-- Exercises Flock with synthetic enrollment/heartbeat data and an empty task queue. The dispatch test uses a nonexistent target and confirms no task is created.
+- Exercises Flock with synthetic enrollment/heartbeat data and an empty task queue. Duplicate normalized name/hostname enrollment and unauthenticated rejoin must leave identity/token/metadata/inventory unchanged; authenticated rejoin must preserve them. Denies hostname replacement and empty, mismatched, disabled or missing command policies through HTTP, checking after each denial that no task exists. Command strings are nonexistent sentinel paths, never dispatched to a real agent.
 - Stops its own child process groups and deletes the temporary database/logs on success, error, or Ctrl-C. Do not kill it with SIGKILL if graceful cleanup is required.
 
 To inspect the UI before cleanup:
@@ -32,15 +32,16 @@ backend/.venv/bin/python scripts/local_smoke.py --hold
 # Open http://127.0.0.1:3000/login; press Enter in the script terminal to stop.
 ```
 
-The hold mode intentionally does not reveal generated passwords. Use it for anonymous UI/rendering and failed demo-login checks; authenticated role flows are already exercised by the script. Never use the visible demo credentials for a shared deployment.
+The hold mode intentionally does not reveal generated passwords. Use it for anonymous UI/rendering and failed demo-login checks; authenticated role flows are already exercised by the script. The login screen no longer advertises demo credentials; shared deployments require their own secure bootstrap.
 
 ## What passes are required
 
-The script verifies health endpoints; valid and invalid login; rejection of demo passwords; authenticated reads for admin/operator/viewer; missing/invalid bearer-token rejection; role restrictions; safe local node-group create/delete; CORS; Flock enrollment/authentication/heartbeat/shared inventory; ten frontend HTML routes; and the actual Next.js image-optimization endpoint. It checks that neither command tasks nor health checks ran.
+The script verifies health endpoints; valid and invalid login; rejection of demo passwords; authenticated reads for admin/operator/viewer; missing/invalid bearer-token rejection; role restrictions; safe local node-group create/delete; CORS; Flock enrollment/authentication/rejoin protection/command-policy denials/heartbeat/shared inventory; ten frontend HTML routes; and the actual Next.js image-optimization endpoint. It checks that neither command tasks nor health checks ran.
 
-Also run the repository checks against the final dependency versions:
+Also run the repository checks against the final application changes:
 
 ```bash
+python3 -m unittest discover -s scripts/tests -v
 (cd backend && .venv/bin/python -m unittest discover -s tests -v)
 (cd frontend && npm run typecheck && npm test)
 ```

@@ -1,20 +1,27 @@
 from sqlalchemy.orm import Session
 
 from app.auth import get_password_hash
+from app.bootstrap import assert_no_demo_access
 from app.config import get_settings
-from app.models import Credential, FlockAgent, FlockEnrollmentToken, FlockMetric, FlockPolicy, FlockTask, Node, NodeHealthCheck, RemediationProfile, User
+from app.models import FlockAgent, FlockEnrollmentToken, FlockMetric, FlockPolicy, FlockTask, Node, NodeHealthCheck, RemediationProfile, User
 
 
 def seed_data(db: Session) -> None:
     settings = get_settings()
+    assert_no_demo_access(db)
     if not db.query(User).first():
-        db.add_all(
-            [
-                User(username="admin", full_name="RAVEN Admin", hashed_password=get_password_hash("admin123!"), role="admin"),
-                User(username="operator", full_name="Primary Operator", hashed_password=get_password_hash("operator123!"), role="operator"),
-                User(username="viewer", full_name="Read Only User", hashed_password=get_password_hash("viewer123!"), role="viewer"),
-            ]
-        )
+        if not settings.bootstrap_admin_username or not settings.bootstrap_admin_password:
+            raise RuntimeError(
+                "No users exist. Run python -m app.bootstrap init-admin before starting services, "
+                "or supply BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD. "
+                "See SECURITY_BOOTSTRAP.md."
+            )
+        db.add(User(
+            username=settings.bootstrap_admin_username,
+            full_name="RAVEN Administrator",
+            hashed_password=get_password_hash(settings.bootstrap_admin_password),
+            role="admin",
+        ))
 
     if not db.query(RemediationProfile).filter(RemediationProfile.name == "command-executor").first():
         db.add(
@@ -47,24 +54,12 @@ def seed_data(db: Session) -> None:
         if not linked and node.description == "Auto-enrolled Flock agent host.":
             db.delete(node)
 
-    credential = db.query(Credential).filter(Credential.name == "local-agent-token").first()
-    if not credential:
-        credential = Credential(
-            name="local-agent-token",
-            kind="agent_token",
-            description="Example credential for a node-local agent endpoint.",
-            secret_value="replace-me",
-            metadata_json={},
-        )
-        db.add(credential)
-        db.flush()
-
     flock_policy = db.query(FlockPolicy).filter(FlockPolicy.name == "Default Linux/Unix Policy").first()
     if not flock_policy:
         flock_policy = FlockPolicy(
             name="Default Linux/Unix Policy",
             description="Default policy for Linux/Unix Flock agents enrolled through the local development workflow.",
-            is_default=True,
+            is_default=not db.query(FlockPolicy).filter(FlockPolicy.is_default.is_(True)).first(),
             is_enabled=True,
             heartbeat_interval_seconds=10,
             task_timeout_seconds=60,
@@ -72,15 +67,10 @@ def seed_data(db: Session) -> None:
         )
         db.add(flock_policy)
         db.flush()
-    else:
-        flock_policy.is_default = True
 
-    for policy in db.query(FlockPolicy).filter(FlockPolicy.id != flock_policy.id, FlockPolicy.is_default.is_(True)).all():
-        policy.is_default = False
-
-    enrollment_secret = settings.flock_enrollment_token or "dev-flock-enrollment-token"
+    enrollment_secret = settings.flock_enrollment_token
     enrollment_token = db.query(FlockEnrollmentToken).filter(FlockEnrollmentToken.name == "local-linux-unix-enrollment").first()
-    if not enrollment_token:
+    if enrollment_secret and not enrollment_token:
         db.add(
             FlockEnrollmentToken(
                 name="local-linux-unix-enrollment",
