@@ -69,6 +69,27 @@ def seed():
     print("PASS: random accounts preseeded before listeners; monitoring/AI disabled")
 
 
+def ready():
+    settings_and_passwords()
+    import httpx
+    with httpx.Client(trust_env=False, timeout=2) as client:
+        for name, url in (("backend", "http://backend:8000/api/health"), ("flock", "http://flock:8000/api/health"), ("frontend", "http://frontend:3000/login")):
+            deadline = time.monotonic() + 40
+            last = "connection unavailable"
+            while time.monotonic() < deadline:
+                try:
+                    response = client.get(url)
+                    last = f"HTTP {response.status_code}"
+                    if response.status_code == 200:
+                        print(f"PASS: internal {name} readiness HTTP 200", flush=True)
+                        break
+                except httpx.TransportError:
+                    pass
+                time.sleep(0.5)
+            else:
+                raise CheckFailure(f"Internal {name} readiness timed out ({last})")
+
+
 def http_checks():
     settings, passwords = settings_and_passwords()
     import httpx
@@ -198,7 +219,7 @@ def wait_agent():
 
 if __name__ == "__main__":
     try:
-        {"seed": seed, "http": http_checks, "audit": audit, "agent": wait_agent}[sys.argv[1]]()
+        {"seed": seed, "ready": ready, "http": http_checks, "audit": audit, "agent": wait_agent}[sys.argv[1]]()
     except Exception as exc:
         # Never dump arbitrary exception/request/response text containing credentials.
         detail = str(exc) if isinstance(exc, CheckFailure) else f"{type(exc).__name__}; private details suppressed"

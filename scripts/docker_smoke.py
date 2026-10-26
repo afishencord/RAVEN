@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -139,6 +140,7 @@ def cleanup(state):
     if not state.exists():
         return
     check((state / "state.json").is_file(), "Refusing cleanup without disposable project marker")
+    stop_relay(state)
     command = compose(state)
     result = execute(command + ["down", "--volumes", "--remove-orphans", "--rmi", "local", "--timeout", "10"], "cleanup", timeout=120, allow_failure=True)
     check(result.returncode == 0, "Docker cleanup failed; keep private state for --cleanup retry")
@@ -150,28 +152,124 @@ def cleanup(state):
     print("PASS: disposable containers, volumes, network and private secret files removed", flush=True)
 
 
-def wait_ready(url):
-    # Do not honor proxy environment variables for loopback checks.
+def wait_ready(url, description, *, timeout=60, relay=None):
+    # Do not honor proxy environment variables for local checks.
     client = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    deadline = time.monotonic() + 90
+    deadline = time.monotonic() + timeout
+    last = "no response"
     while time.monotonic() < deadline:
+        check(relay is None or relay.poll() is None, "Loopback relay exited before readiness (listener conflict or startup failure)")
         try:
             with client.open(url, timeout=2) as response:
+                last = f"HTTP {response.status}"
                 if response.status == 200:
+                    print(f"PASS: {description} responds HTTP 200", flush=True)
                     return
+        except urllib.error.HTTPError as exc:
+            last = f"HTTP {exc.code}"
         except (OSError, urllib.error.URLError):
-            pass
+            last = "connection unavailable"
         time.sleep(0.5)
-    raise SmokeFailure("Loopback service readiness timed out")
+    raise SmokeFailure(f"{description} readiness timed out ({last})")
 
 
-def verify_running(command):
-    for name in SERVICES:
-        container = execute(command + ["ps", "-q", name], f"{name} container lookup").stdout.strip()
-        check(bool(container), f"{name} container is missing")
-        running = execute(DOCKER + ["inspect", "--format", "{{.State.Running}}:{{.State.Restarting}}:{{.RestartCount}}", container], f"{name} process state").stdout.strip()
-        check(running == "true:false:0", f"{name} exited or restarted")
-    print("PASS: all five Compose services running without restarts; runner observed idle", flush=True)
+def inspect_services(command, names):
+    snapshots = {}
+    # Never inspect/print Config.Env, process args, State.Error, or application logs.
+    template = '{"running":{{json .State.Running}},"status":{{json .State.Status}},"exit":{{.State.ExitCode}},"oom":{{json .State.OOMKilled}},"restarting":{{json .State.Restarting}},"restarts":{{.RestartCount}},"ports":{{json .NetworkSettings.Ports}},"networks":{{json .NetworkSettings.Networks}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}}}'
+    project = command[command.index("--project-name") + 1]
+    for name in names:
+        container = execute(command + ["ps", "--all", "-q", name], f"{name} container lookup").stdout.strip()
+        check(bool(re.fullmatch(r"[a-f0-9]{12,64}", container)), f"{name} container missing or ambiguous")
+        item = json.loads(execute(DOCKER + ["inspect", "--format", template, container], f"{name} process state").stdout)
+        check(item["project"] == project and item["service"] == name, "Container ownership mismatch")
+        check(set(item["networks"]) == {project + "_default"}, "Unexpected container network attachment")
+        # Format allowlisted scalars only; no arbitrary diagnostic strings.
+        check(item["status"] in {"created", "running", "paused", "restarting", "removing", "exited", "dead"}, "Unexpected container state")
+        bindings = sum(len(value or []) for value in (item["ports"] or {}).values())
+        print(f"STATE: {name}: status={item['status']} exit={int(item['exit'])} restarts={int(item['restarts'])} oom={bool(item['oom'])} published_bindings={bindings}", flush=True)
+        snapshots[name] = item
+    check(all(item["running"] and not item["restarting"] and item["restarts"] == 0 for item in snapshots.values()), "A Compose service exited/restarted; see safe STATE diagnostics")
+    return snapshots
+
+
+def relay_targets(snapshots):
+    targets = {}
+    for name, port in (("backend", 8000), ("frontend", 3000)):
+        item = snapshots[name]
+        ports = item["ports"] or {}
+        check(not any(value for key, value in ports.items() if key != f"{port}/tcp"), "Unexpected effective published port")
+        binding = ports.get(f"{port}/tcp")
+        if binding:
+            check(binding == [{"HostIp": "127.0.0.1", "HostPort": str(port)}], "Unexpected effective host binding")
+            print(f"ROUTE: {name}: native Docker loopback mapping present", flush=True)
+            continue
+        address = ipaddress.IPv4Address(next(iter(item["networks"].values()))["IPAddress"])
+        check(address.is_private and not (address.is_loopback or address.is_unspecified or address.is_multicast or address.is_link_local), "Unexpected container relay destination")
+        targets[name] = str(address)
+    return targets
+
+
+def process_identity(pid):
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(") ", 1)[1].split()
+        if fields[0] == "Z":
+            return None
+        return fields[19], Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")[:-1]
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+
+
+def start_relay(state, targets):
+    if not targets:
+        return None
+    command = [sys.executable, str(ROOT / "scripts/loopback_relay.py")]
+    for name in ("backend", "frontend"):
+        if name in targets:
+            command += [f"--{name}-ip", targets[name]]
+    proc = subprocess.Popen(command, cwd=ROOT, env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        identity = process_identity(proc.pid)
+        check(identity is not None, "Loopback relay exited before setup")
+        (state / "relay.json").write_text(json.dumps({"pid": proc.pid, "start": identity[0], "command": command}))
+    except BaseException:
+        proc.terminate()
+        proc.wait(timeout=5)
+        raise
+    for name in targets:
+        print(f"ROUTE: {name}: Docker omitted mapping on internal network; fixed loopback TCP relay enabled", flush=True)
+    return proc
+
+
+def stop_relay(state):
+    marker = state / "relay.json"
+    if not marker.exists():
+        return
+    meta = json.loads(marker.read_text())
+    command = meta["command"]
+    check(command[:2] == [sys.executable, str(ROOT / "scripts/loopback_relay.py")], "Invalid relay cleanup marker")
+    identity = process_identity(int(meta["pid"]))
+    if identity is not None and identity == (meta["start"], [part.encode() for part in command]):
+        try:
+            os.kill(meta["pid"], signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + 5
+        while process_identity(meta["pid"]) == identity and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if process_identity(meta["pid"]) == identity:
+            os.kill(meta["pid"], signal.SIGKILL)
+            deadline = time.monotonic() + 2
+            while process_identity(meta["pid"]) == identity and time.monotonic() < deadline:
+                time.sleep(0.05)
+        check(process_identity(meta["pid"]) != identity, "Loopback relay did not terminate")
+    marker.unlink()
+
+
+def print_checks(result):
+    for line in result.stdout.splitlines():
+        if line.startswith("PASS:"):
+            print(line, flush=True)
 
 
 def run(state):
@@ -185,6 +283,9 @@ def run(state):
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", port))
     prepare(state)
+    relay = None
+    command = None
+    started = False
     try:
         command = compose(state)
         model = json.loads(execute(command + ["config", "--format", "json"], "private Compose validation").stdout)
@@ -201,10 +302,15 @@ def run(state):
         print("PASS: frontend container typecheck, dependency/CSS/native Sharp unit tests", flush=True)
         execute(command + ["run", "--rm", "--no-deps", "-T", "backend", "python", "/checks/container_checks.py", "seed"], "pre-listener random account seeding", check_diagnostics=True)
         print("PASS: random users seeded before opening listeners", flush=True)
+        started = True
         execute(command + ["up", "--detach", "--no-build", "backend", "flock", "runner", "frontend"], "Compose deployment")
-        wait_ready("http://127.0.0.1:8000/api/health")
-        wait_ready("http://127.0.0.1:3000/login")
-        print("PASS: published loopback API and frontend respond", flush=True)
+        snapshots = inspect_services(command, ("backend", "flock", "runner", "frontend"))
+        print_checks(execute(command + ["exec", "-T", "backend", "python", "/checks/container_checks.py", "ready"], "internal service readiness", timeout=150, check_diagnostics=True))
+        relay = start_relay(state, relay_targets(snapshots))
+        wait_ready("http://127.0.0.1:8000/api/health", "loopback API", relay=relay)
+        wait_ready("http://127.0.0.1:3000/login", "loopback frontend", relay=relay)
+        wait_ready("http://127.0.0.1:3000/_next/image?url=%2Fbrand%2Fraven-square-logo.png&w=96&q=75", "loopback image optimizer", relay=relay)
+        check(relay is None or relay.poll() is None, "Loopback relay exited unexpectedly")
         for phase in ("http",):
             result = execute(command + ["exec", "-T", "backend", "python", "/checks/container_checks.py", phase], "container HTTP smoke", check_diagnostics=True)
             for line in result.stdout.splitlines():
@@ -217,12 +323,27 @@ def run(state):
         for line in result.stdout.splitlines():
             if line.startswith("PASS:"):
                 print(line, flush=True)
-        verify_running(command)
+        inspect_services(command, SERVICES)
+        print("PASS: all five Compose services running without restarts; runner observed idle", flush=True)
         # The frontend API address is build-time, not just a runtime environment.
         execute(command + ["exec", "-T", "frontend", "node", "-e", "const fs=require('fs'),p=require('path');function scan(d){return fs.readdirSync(d,{withFileTypes:true}).some(e=>e.isDirectory()?scan(p.join(d,e.name)):e.name.endsWith('.js')&&fs.readFileSync(p.join(d,e.name),'utf8').includes('http://127.0.0.1:8000/api'))}if(!scan('.next/static/chunks'))process.exit(1)"], "compiled frontend API URL")
+        check(relay is None or relay.poll() is None, "Loopback relay exited during the smoke suite")
         print("PASS: compiled browser API URL is loopback; browser interaction testing not performed", flush=True)
+    except BaseException:
+        if started:
+            try:
+                inspect_services(command, ("backend", "flock", "runner", "frontend"))
+            except Exception:
+                pass  # Preserve the original failure; diagnostics are best effort.
+        raise
     finally:
-        cleanup(state)
+        try:
+            cleanup(state)
+        finally:
+            if relay is not None:
+                if relay.poll() is None:
+                    relay.terminate()
+                relay.wait(timeout=5)
 
 
 def main():
