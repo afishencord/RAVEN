@@ -192,6 +192,7 @@ class FlockAgentUpdate(BaseModel):
 
 class FlockEnrollmentRequest(BaseModel):
     enrollment_token: str = Field(min_length=1)
+    existing_agent_id: str | None = Field(default=None, min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=128)
     hostname: str = Field(min_length=1, max_length=255)
     platform: str = "linux"
@@ -203,7 +204,7 @@ class FlockEnrollmentRequest(BaseModel):
 class FlockEnrollmentResponse(BaseModel):
     agent_id: str
     agent_token: str
-    policy: FlockPolicyRead
+    policy: FlockPolicyRead | None
 
 
 class FlockHeartbeatRequest(BaseModel):
@@ -217,7 +218,7 @@ class FlockHeartbeatRequest(BaseModel):
 
 class FlockHeartbeatResponse(BaseModel):
     status: str
-    policy: FlockPolicyRead
+    policy: FlockPolicyRead | None
 
 
 class FlockClaimedTaskRead(BaseModel):
@@ -225,6 +226,7 @@ class FlockClaimedTaskRead(BaseModel):
     task_type: str = "command"
     command: str
     timeout_seconds: int
+    policy: FlockPolicyRead | None = None
 
 
 class FlockTaskResultRequest(BaseModel):

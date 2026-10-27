@@ -20,7 +20,6 @@ from app.services.flock import (
     authenticate_agent,
     cleanup_agent_inventory_by_id,
     create_agent,
-    default_policy,
     find_enrollment_token,
     mark_agent_seen,
     mark_agent_unenrolled,
@@ -29,6 +28,8 @@ from app.services.flock import (
     sync_inventory_node,
     wait_for_task_result,
 )
+from app.services.flock_identity import identity_key
+from app.services.flock_policy import FlockPolicyError, authorize_command, policy_timeout
 
 router = APIRouter(prefix="/flock", tags=["flock-agent"])
 
@@ -46,7 +47,11 @@ def _require_internal_token(x_flock_internal_token: str | None) -> None:
 
 
 @router.post("/enroll", response_model=FlockEnrollmentResponse)
-def enroll(payload: FlockEnrollmentRequest, db: Session = Depends(get_db)):
+def enroll(
+    payload: FlockEnrollmentRequest,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
     enrollment_token = find_enrollment_token(db, payload.enrollment_token)
     if not enrollment_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid enrollment token")
@@ -59,11 +64,13 @@ def enroll(payload: FlockEnrollmentRequest, db: Session = Depends(get_db)):
         version=payload.version,
         metadata_json=payload.metadata_json,
         enrollment_token=enrollment_token,
+        existing_agent_id=payload.existing_agent_id,
+        existing_agent_token=_bearer_token(authorization) if authorization is not None else None,
     )
-    policy = agent.policy or default_policy(db)
+    policy = agent.policy
     db.commit()
     db.refresh(agent)
-    return FlockEnrollmentResponse(agent_id=agent.agent_id, agent_token=agent_token, policy=serialize_policy(db, policy))
+    return FlockEnrollmentResponse(agent_id=agent.agent_id, agent_token=agent_token, policy=serialize_policy(db, policy) if policy else None)
 
 
 @router.post("/agents/{agent_id}/heartbeat", response_model=FlockHeartbeatResponse)
@@ -74,8 +81,13 @@ def heartbeat(
     db: Session = Depends(get_db),
 ):
     agent = authenticate_agent(db, agent_id, _bearer_token(authorization))
-    if payload.hostname:
-        agent.hostname = payload.hostname
+    if payload.hostname is not None:
+        try:
+            matches = identity_key(payload.hostname, hostname=True) == agent.hostname_key
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if not matches:
+            raise HTTPException(status_code=409, detail="Heartbeat cannot change the enrolled hostname; administrator recovery is required")
     if payload.platform:
         agent.platform = payload.platform
     if payload.architecture:
@@ -88,9 +100,9 @@ def heartbeat(
         db.add(FlockMetric(agent_id=agent.id, payload_json=payload.metrics_json))
     if not agent.node_id:
         sync_inventory_node(db, agent)
-    policy = agent.policy or default_policy(db)
+    policy = agent.policy
     db.commit()
-    return FlockHeartbeatResponse(status="ok", policy=serialize_policy(db, policy))
+    return FlockHeartbeatResponse(status="ok", policy=serialize_policy(db, policy) if policy else None)
 
 
 @router.post("/agents/{agent_id}/tasks/claim", response_model=FlockClaimedTaskRead | None)
@@ -109,11 +121,27 @@ def claim_task(agent_id: str, authorization: str | None = Header(default=None), 
     if not task:
         db.commit()
         return None
+    if task.task_type != "unenroll":
+        try:
+            if task.task_type != "command" or agent.status == "unenroll_pending":
+                raise FlockPolicyError("Command execution is unavailable for this agent/task")
+            authorize_command(agent.policy, task.command)
+            task.timeout_seconds = max(1, min(task.timeout_seconds, policy_timeout(agent.policy)))
+        except FlockPolicyError as exc:
+            task.status = "failed"
+            task.finished_at = utcnow()
+            task.exit_code = 126
+            task.output = f"Flock policy denied queued task: {exc}"
+            db.commit()
+            return None
     task.status = "running"
     task.claimed_at = utcnow()
     db.commit()
     db.refresh(task)
-    return FlockClaimedTaskRead(id=task.id, task_type=task.task_type, command=task.command, timeout_seconds=task.timeout_seconds)
+    return FlockClaimedTaskRead(
+        id=task.id, task_type=task.task_type, command=task.command, timeout_seconds=task.timeout_seconds,
+        policy=serialize_policy(db, agent.policy) if agent.policy else None,
+    )
 
 
 @router.post("/agents/{agent_id}/tasks/{task_id}/result")
@@ -152,8 +180,14 @@ def dispatch_task(
     agent = resolve_agent_target(db, payload.target)
     if not agent:
         return FlockDispatchResponse(status="failed", exit_code=1, output=f"No enrolled Flock agent matches target {payload.target!r}.")
-    policy = agent.policy or default_policy(db)
-    timeout_seconds = max(1, min(payload.timeout_seconds or policy.task_timeout_seconds, policy.task_timeout_seconds))
+    policy = agent.policy
+    try:
+        if agent.status == "unenroll_pending":
+            raise FlockPolicyError("Flock agent unenrollment is pending")
+        authorize_command(policy, payload.command)
+        timeout_seconds = max(1, min(payload.timeout_seconds, policy_timeout(policy)))
+    except FlockPolicyError as exc:
+        return FlockDispatchResponse(status="failed", exit_code=126, output=f"Flock policy denied command: {exc}", agent_id=agent.agent_id)
     task = FlockTask(
         agent_id=agent.id,
         execution_task_id=payload.execution_task_id,

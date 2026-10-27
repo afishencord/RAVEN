@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import secrets
 import sys
 import time
 
@@ -32,6 +31,8 @@ def settings_and_passwords():
     passwords = json.loads(Path("/checks/passwords.json").read_text())
     check(set(passwords) == {"admin", "operator", "viewer"}, "Expected three test roles")
     check(all(len(password) >= 40 for password in passwords.values()), "Random role passwords are required")
+    check(settings.bootstrap_admin_username == "admin" and settings.bootstrap_admin_password == passwords["admin"], "Secure bootstrap must use only the generated administrator credential")
+    check(not settings.ssh_known_hosts_path, "SSH trust must not be inherited")
     return settings, passwords
 
 
@@ -52,21 +53,20 @@ def seed():
     migrate_sqlite_schema()
     with SessionLocal() as db:
         check(db.query(User).count() == 0, "Refusing to seed an existing database")
-        # This commits BEFORE seed_data or any listener can expose default users.
-        for role, password in passwords.items():
-            db.add(User(username=role, role=role, full_name=f"Disposable Docker {role}", hashed_password=get_password_hash(password)))
-        db.commit()
         seed_data(db)
+        check([(user.username, user.role) for user in db.query(User)] == [("admin", "admin")], "Secure bootstrap must create only the configured administrator")
+        check(db.query(Credential).count() == 0, "Seed must not create a demo infrastructure credential")
+        for role in ("operator", "viewer"):
+            db.add(User(username=role, role=role, full_name=f"Disposable Docker {role}", hashed_password=get_password_hash(passwords[role])))
+        db.commit()
         disable_checks(db)
-        for credential in db.query(Credential):
-            credential.secret_value = secrets.token_urlsafe(48)
         for policy in db.query(FlockPolicy):
             policy.heartbeat_interval_seconds = 1
         db.commit()
         for user in db.query(User):
             check(not verify_password(user.username + "123!", user.hashed_password), "Demo password unexpectedly enabled")
     engine.dispose()
-    print("PASS: random accounts preseeded before listeners; monitoring/AI disabled")
+    print("PASS: secure administrator bootstrap before listeners; random role fixtures; monitoring/AI disabled")
 
 
 def ready():
@@ -88,6 +88,86 @@ def ready():
                 time.sleep(0.5)
             else:
                 raise CheckFailure(f"Internal {name} readiness timed out ({last})")
+
+
+def flock_checks(request, sessions, *, broker, enrollment_token, internal_token, admin_token, verify=check):
+    """Shared HTTP checks against a synthetic identity with no agent process.
+
+    Every command string is an inert test sentinel, and each policy request must
+    fail before insertion. The actual Docker heartbeat agent starts only later.
+    """
+    from app.models import FlockAgent, FlockEnrollmentToken, FlockTask, Node
+
+    enrollment = {"name": "synthetic-smoke-agent", "hostname": "127.0.0.1", "metadata_json": {"environment": "disposable-smoke"}}
+    for bad_token in ("invalid-test-token", "dev-flock-enrollment-token"):
+        request("POST", "/api/flock/enroll", 401, base=broker, json={**enrollment, "enrollment_token": bad_token})
+    payload = {**enrollment, "enrollment_token": enrollment_token}
+    enrolled = request("POST", "/api/flock/enroll", base=broker, json=payload).json()
+    agent_id, agent_token = enrolled["agent_id"], enrolled["agent_token"]
+    policy_id = enrolled["policy"]["id"]
+    with sessions() as db:
+        disable_checks(db)
+
+    def snapshot():
+        with sessions() as db:
+            return tuple(
+                [tuple(getattr(row, column.key) for column in model.__table__.columns) for row in db.query(model).order_by(model.id)]
+                for model in (FlockAgent, Node, FlockEnrollmentToken)
+            )
+
+    before = snapshot()
+    for duplicate in (
+        {**payload, "name": " SYNTHETIC-SMOKE-AGENT ", "hostname": "unused-smoke.invalid"},
+        {**payload, "name": "unused-smoke-name", "hostname": " 127.0.0.1 "},
+    ):
+        request("POST", "/api/flock/enroll", 409, base=broker, json=duplicate)
+        verify(snapshot() == before, "Rejected duplicate enrollment mutated an existing identity or inventory")
+    rejoin = {**payload, "existing_agent_id": agent_id, "metadata_json": {"unexpected_replacement": True}}
+    for token in (None, "invalid-agent-test-token"):
+        request("POST", "/api/flock/enroll", 401, base=broker, token=token, json=rejoin)
+        verify(snapshot() == before, "Rejected rejoin mutated an existing identity or inventory")
+    rejoined = request("POST", "/api/flock/enroll", base=broker, token=agent_token, json=rejoin).json()
+    verify(rejoined["agent_id"] == agent_id and rejoined["agent_token"] == agent_token, "Authenticated rejoin rotated an existing identity or token")
+    verify(snapshot() == before, "Authenticated rejoin must retain original identity, metadata and inventory")
+
+    agent_path = f"/api/flock/agents/{agent_id}"
+    request("POST", agent_path + "/heartbeat", 401, base=broker, json={})
+    request("POST", agent_path + "/heartbeat", 409, base=broker, token=agent_token, json={"hostname": "replacement-smoke.invalid"})
+    request("POST", agent_path + "/heartbeat", base=broker, token=agent_token, json={"metrics_json": {"synthetic_smoke": True}})
+    verify(request("POST", agent_path + "/tasks/claim", base=broker, token=agent_token).json() is None, "Unexpected agent command")
+    agents = request("GET", "/api/flock/agents", token=admin_token).json()
+    verify(len(agents) == 1 and agents[0]["agent_id"] == agent_id, "Broker/API inventory mismatch")
+    database_agent_id = agents[0]["id"]
+    request("GET", f"/api/flock/agents/{database_agent_id}/metrics", token=admin_token)
+    dispatch_path = "/api/flock/internal/dispatch"
+    headers = {"X-Flock-Internal-Token": internal_token}
+    missing = {"target": "flock:nonexistent-disposable-agent", "command": "NOT_EXECUTED"}
+    request("POST", dispatch_path, 401, base=broker, json=missing)
+    request("POST", dispatch_path, 401, base=broker, headers={"X-Flock-Internal-Token": "dev-flock-internal-token"}, json=missing)
+    result = request("POST", dispatch_path, base=broker, headers=headers, json=missing).json()
+    verify(result["status"] == "failed" and result.get("task_id") is None, "Missing target must not create a task")
+
+    def denied(command):
+        result = request("POST", dispatch_path, base=broker, headers=headers, json={"target": f"flock:{agent_id}", "command": command, "timeout_seconds": 1}).json()
+        verify(result["status"] == "failed" and result["exit_code"] == 126 and result.get("task_id") is None, "Policy denial must not create or dispatch a task")
+        with sessions() as db:
+            verify(db.query(FlockTask).count() == 0, "Policy denial queued unexpected work")
+
+    policy_path = f"/api/flock/policies/{policy_id}"
+    # These paths deliberately do not identify any actual executable.
+    sentinel = "/raven-smoke-nonexistent-sentinel"
+    request("PUT", policy_path, token=admin_token, json={"command_allowlist": [], "is_enabled": True})
+    denied(sentinel)
+    request("PUT", policy_path, token=admin_token, json={"command_allowlist": [sentinel + "-allowed"]})
+    denied(sentinel)
+    request("PUT", policy_path, token=admin_token, json={"is_enabled": False})
+    denied(sentinel + "-allowed")
+    request("PUT", f"/api/flock/agents/{database_agent_id}", token=admin_token, json={"policy_id": None})
+    denied(sentinel)
+    request("PUT", f"/api/flock/agents/{database_agent_id}", token=admin_token, json={"policy_id": policy_id})
+    request("PUT", policy_path, token=admin_token, json={"command_allowlist": [], "is_enabled": True})
+    verify(request("POST", agent_path + "/tasks/claim", base=broker, token=agent_token).json() is None, "Policy checks must leave the queue empty")
+    print("PASS: duplicate enrollment/rejoin identity protection and empty/mismatched/disabled/missing policy denial; zero commands queued", flush=True)
 
 
 def http_checks():
@@ -153,30 +233,14 @@ def http_checks():
         request("OPTIONS", "/api/auth/login", 400, headers={"Origin": "https://untrusted.example", "Access-Control-Request-Method": "POST"})
         request("GET", "/api/dashboard/metrics?range=invalid", 422, token=admin)
 
-        enrollment = {"name": "synthetic-docker-smoke", "hostname": "127.0.0.1", "metadata_json": {"environment": "disposable-container"}}
-        for bad_token in ("invalid-test-token", "dev-flock-enrollment-token"):
-            request("POST", "/api/flock/enroll", 401, base=broker, json={**enrollment, "enrollment_token": bad_token})
-        enrolled = request("POST", "/api/flock/enroll", base=broker, json={**enrollment, "enrollment_token": settings.flock_enrollment_token}).json()
-        agent_id, agent_token = enrolled["agent_id"], enrolled["agent_token"]
-        with SessionLocal() as db:
-            disable_checks(db)
-        agent_path = f"/api/flock/agents/{agent_id}"
-        request("POST", agent_path + "/heartbeat", 401, base=broker, json={})
-        request("POST", agent_path + "/heartbeat", base=broker, token=agent_token, json={"metrics_json": {"synthetic_smoke": True}})
-        check(request("POST", agent_path + "/tasks/claim", base=broker, token=agent_token).json() is None, "Unexpected agent command")
-        agents = request("GET", "/api/flock/agents", token=admin).json()
-        check(len(agents) == 1 and agents[0]["agent_id"] == agent_id, "Broker/API inventory mismatch")
-        request("GET", f"/api/flock/agents/{agents[0]['id']}/metrics", token=admin)
-        # No target exists, therefore this cannot queue or dispatch executable work.
-        dispatch = {"target": "flock:nonexistent-disposable-agent", "command": "NOT_EXECUTED"}
-        request("POST", "/api/flock/internal/dispatch", 401, base=broker, json=dispatch)
-        request("POST", "/api/flock/internal/dispatch", 401, base=broker, headers={"X-Flock-Internal-Token": "dev-flock-internal-token"}, json=dispatch)
-        result = request("POST", "/api/flock/internal/dispatch", base=broker, headers={"X-Flock-Internal-Token": settings.flock_internal_token}, json=dispatch).json()
-        check(result["status"] == "failed" and result.get("task_id") is None, "Missing target must not create a task")
+        flock_checks(request, SessionLocal, broker=broker, enrollment_token=settings.flock_enrollment_token, internal_token=settings.flock_internal_token, admin_token=admin)
 
         for path in ("/", "/login", "/messages", "/infrastructure", "/alerts", "/reports", "/settings", "/credentials", "/validations", "/remediations"):
             response = request("GET", path, base=frontend)
             check("text/html" in response.headers.get("content-type", ""), "Frontend route did not return HTML")
+            if path == "/login":
+                check(not any(password in response.text for password in ("admin123!", "operator123!", "viewer123!")), "Login page must not expose demo credentials")
+                check('autocomplete="username"' in response.text.lower() and 'autocomplete="current-password"' in response.text.lower(), "Login must support provisioned accounts and password managers")
         image = request("GET", "/_next/image?url=%2Fbrand%2Fraven-square-logo.png&w=96&q=75", base=frontend)
         check(image.headers.get("content-type", "").startswith("image/") and len(image.content) > 0, "Image optimizer failed")
     print(f"PASS: {assertions} container HTTP assertions: health/auth/roles/CORS/Flock/10 UI routes/image optimizer")

@@ -22,10 +22,11 @@ class HarnessTests(unittest.TestCase):
         self.state = Path(self.temp.name) / "private"
 
     def model(self):
-        env = {"EMBEDDED_MONITORING": "false", "OPENAI_API_KEY": "", "DATABASE_URL": "sqlite:////data/raven.db", "JWT_SECRET_KEY": "a" * 64, "FLOCK_INTERNAL_TOKEN": "b" * 64, "FLOCK_ENROLLMENT_TOKEN": "c" * 64}
+        env = {"EMBEDDED_MONITORING": "false", "OPENAI_API_KEY": "", "DATABASE_URL": "sqlite:////data/raven.db", "JWT_SECRET_KEY": "a" * 64, "FLOCK_INTERNAL_TOKEN": "b" * 64, "FLOCK_ENROLLMENT_TOKEN": "c" * 64, "BOOTSTRAP_ADMIN_USERNAME": "admin", "BOOTSTRAP_ADMIN_PASSWORD": "d" * 64, "SSH_KNOWN_HOSTS_PATH": ""}
         services = {}
         for name in smoke.SERVICES:
             services[name] = {"restart": "no", "logging": {"driver": "none"}, "networks": {"default": {}}, "environment": env.copy(), "build": {"context": str(smoke.ROOT / ("frontend" if name == "frontend" else "backend"))}}
+        services["flock-test"]["environment"] = {"FLOCK_SERVER_URL": "http://flock:8000/api/flock", "FLOCK_ENROLLMENT_TOKEN": "c" * 64, "FLOCK_AGENT_NAME": "disposable-docker-agent", "FLOCK_AGENT_STATE_PATH": "/agent-state/flock-agent-state.json"}
         for name, port in (("backend", 8000), ("frontend", 3000)):
             services[name]["ports"] = [{"target": port, "published": str(port), "host_ip": "127.0.0.1"}]
         services["frontend"]["build"]["args"] = {"NEXT_PUBLIC_API_BASE_URL": "http://127.0.0.1:8000/api"}
@@ -47,7 +48,7 @@ class HarnessTests(unittest.TestCase):
             smoke.validate_config(model, self.state)
 
     def test_effective_model_rejects_unsafe_runtime_settings(self):
-        for key, value in (("OPENAI_API_KEY", "not-a-real-key"), ("EMBEDDED_MONITORING", "true"), ("DATABASE_URL", "sqlite:///production.db"), ("FLOCK_INTERNAL_TOKEN", "dev-flock-internal-token")):
+        for key, value in (("OPENAI_API_KEY", "not-a-real-key"), ("EMBEDDED_MONITORING", "true"), ("DATABASE_URL", "sqlite:///production.db"), ("FLOCK_INTERNAL_TOKEN", "dev-flock-internal-token"), ("BOOTSTRAP_ADMIN_USERNAME", "other"), ("BOOTSTRAP_ADMIN_PASSWORD", "admin123!"), ("SSH_KNOWN_HOSTS_PATH", "/home/user/.ssh/known_hosts")):
             with self.subTest(key=key):
                 model = self.model()
                 model["services"]["backend"]["environment"][key] = value
@@ -57,6 +58,13 @@ class HarnessTests(unittest.TestCase):
         model["networks"]["default"]["internal"] = False
         with self.assertRaises(smoke.SmokeFailure):
             smoke.validate_config(model, self.state)
+
+    def test_agent_must_not_receive_control_plane_secrets(self):
+        for key in ("JWT_SECRET_KEY", "FLOCK_INTERNAL_TOKEN", "BOOTSTRAP_ADMIN_PASSWORD", "OPENAI_API_KEY"):
+            model = self.model()
+            model["services"]["flock-test"]["environment"][key] = "private-control-plane-fixture"
+            with self.subTest(key=key), self.assertRaises(smoke.SmokeFailure):
+                smoke.validate_config(model, self.state)
 
     def test_effective_model_rejects_unsafe_mount(self):
         for mount in ({"type": "bind", "source": "/var/run/docker.sock", "read_only": True}, {"type": "bind", "source": str(self.state / "passwords.json"), "read_only": False}):
@@ -73,6 +81,7 @@ class HarnessTests(unittest.TestCase):
             os.umask(old_umask)
         self.assertEqual(stat.S_IMODE(self.state.stat().st_mode), 0o700)
         self.assertEqual(stat.S_IMODE((self.state / "test.env").stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE((self.state / "agent.env").stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE((self.state / "passwords.json").stat().st_mode), 0o444)
         passwords = json.loads((self.state / "passwords.json").read_text())
         self.assertEqual(set(passwords), {"admin", "operator", "viewer"})
@@ -80,6 +89,13 @@ class HarnessTests(unittest.TestCase):
         self.assertTrue(all(len(value) >= 40 for value in passwords.values()))
         text = (self.state / "test.env").read_text()
         self.assertNotIn("dev-", text)
+        values = dict(line.split("=", 1) for line in text.splitlines())
+        self.assertEqual(values["BOOTSTRAP_ADMIN_PASSWORD"], passwords["admin"])
+        agent_values = dict(line.split("=", 1) for line in (self.state / "agent.env").read_text().splitlines())
+        self.assertEqual(set(agent_values), {"FLOCK_SERVER_URL", "FLOCK_ENROLLMENT_TOKEN"})
+        self.assertEqual(agent_values["FLOCK_ENROLLMENT_TOKEN"], values["FLOCK_ENROLLMENT_TOKEN"])
+        all_secrets = [values[key] for key in ("JWT_SECRET_KEY", "FLOCK_INTERNAL_TOKEN", "FLOCK_ENROLLMENT_TOKEN")] + list(passwords.values())
+        self.assertEqual(len(set(all_secrets)), 6)
         with self.assertRaises(FileExistsError):
             smoke.prepare(self.state)
 

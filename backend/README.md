@@ -65,9 +65,11 @@ packages are not covered by this Python dependency lock.
   request, not from token role claims.
 - Password hashing is unchanged (`passlib==1.7.4`, `bcrypt==4.0.1`) to preserve
   existing hashes. Moving to another password hashing library is separate work.
-- Keep a strong, private `JWT_SECRET_KEY` outside source control. No deployment
-  secret or default credential is changed by these code changes. Rotating the
-  secret intentionally invalidates previously issued tokens.
+- Keep independent private `JWT_SECRET_KEY` and `FLOCK_INTERNAL_TOKEN` values
+  outside source control. Missing/placeholder secrets now prevent startup.
+  Follow [secure bootstrap and legacy upgrade instructions](../SECURITY_BOOTSTRAP.md)
+  before deploying; known demo access is refused until explicitly remediated.
+  Rotating the JWT secret intentionally invalidates previously issued tokens.
 
 ## Dependency security updates
 

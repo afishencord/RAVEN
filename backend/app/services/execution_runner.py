@@ -5,9 +5,7 @@ import json
 import logging
 import shlex
 import subprocess
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
 
 import httpx
 from sqlalchemy import desc
@@ -17,6 +15,7 @@ from app.config import get_settings
 from app.database import Base, SessionLocal, engine, migrate_sqlite_schema
 from app.models import ApprovalDecision, Credential, ExecutionTask, HealthCheckResult, Incident, Node, RemediationProfile, User, utcnow
 from app.services.ai_service import AIRecommendationService
+from app.services.ssh_execution import run_ssh
 from app.services.incident_workflow import run_and_record_health_check, write_audit_log
 
 logger = logging.getLogger(__name__)
@@ -34,12 +33,17 @@ class ParsedTarget:
 
 def parse_target(raw_target: str) -> ParsedTarget:
     parts = raw_target.split(":", 2)
-    if len(parts) == 1:
+    if len(parts) == 1 and parts[0] != "ssh":
         return ParsedTarget(transport="local", location=None, subject=raw_target)
     if parts[0] == "local" and len(parts) == 2:
         return ParsedTarget(transport="local", location=None, subject=parts[1])
-    if parts[0] in {"ssh", "api"} and len(parts) == 3:
-        return ParsedTarget(transport=parts[0], location=parts[1], subject=parts[2])
+    if parts[0] == "ssh":
+        # A malformed SSH target must never fall back to local execution.
+        if len(parts) != 3 or not parts[1] or not parts[2]:
+            return ParsedTarget(transport="ssh", location=None, subject="")
+        return ParsedTarget(transport="ssh", location=parts[1], subject=parts[2])
+    if parts[0] == "api" and len(parts) == 3:
+        return ParsedTarget(transport="api", location=parts[1], subject=parts[2])
     return ParsedTarget(transport="local", location=None, subject=raw_target)
 
 
@@ -316,7 +320,9 @@ class RunnerDaemon:
             return self._run_flock(node.execution_target, command, execution_task_id)
 
         parsed = parse_target(node.execution_target)
-        if parsed.transport == "ssh" and parsed.location:
+        if parsed.transport == "ssh":
+            if not parsed.location:
+                return 1, "SSH execution target must be ssh:[user@]host:subject."
             return self._run_ssh(parsed.location, command, credential)
         if parsed.transport == "api" and parsed.location:
             return self._run_api(parsed.location, parsed.subject, command, credential)
@@ -353,50 +359,11 @@ class RunnerDaemon:
             return 127, str(exc)
 
     def _run_ssh(self, location: str, command: str, credential: Credential | None) -> tuple[int, str]:
-        if not credential or credential.kind not in {"ssh_key", "ssh_password"}:
-            return 1, "SSH execution requires an ssh_key or ssh_password credential."
-
-        username = credential.username or "root"
-        if credential.kind == "ssh_password":
-            return self._run_subprocess(
-                [
-                    "sshpass",
-                    "-p",
-                    credential.secret_value,
-                    "ssh",
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    "-o",
-                    "PreferredAuthentications=password",
-                    "-o",
-                    "PubkeyAuthentication=no",
-                    f"{username}@{location}",
-                    command,
-                ]
-            )
-
-        with tempfile.NamedTemporaryFile(mode="w", delete=False) as handle:
-            handle.write(credential.secret_value)
-            key_path = Path(handle.name)
-        key_path.chmod(0o600)
-        try:
-            return self._run_subprocess(
-                [
-                    "ssh",
-                    "-i",
-                    str(key_path),
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    "-o",
-                    "PreferredAuthentications=publickey",
-                    "-o",
-                    "PasswordAuthentication=no",
-                    f"{username}@{location}",
-                    command,
-                ]
-            )
-        finally:
-            key_path.unlink(missing_ok=True)
+        return run_ssh(
+            location, command, credential,
+            known_hosts_path=settings.ssh_known_hosts_path,
+            timeout=60,
+        )
 
     def _run_api(self, endpoint: str, subject: str, command: str, credential: Credential | None) -> tuple[int, str]:
         headers = self._credential_headers(credential)

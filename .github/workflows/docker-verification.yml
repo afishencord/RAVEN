@@ -2,7 +2,7 @@ name: Disposable Docker verification
 
 on:
   push:
-    branches: [security/dependency-refresh-2026-10]
+    branches: [security/dependency-refresh-2026-10, security/application-safeguards]
   workflow_dispatch:
 
 permissions:

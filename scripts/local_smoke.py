@@ -19,9 +19,18 @@ BROKER = "http://127.0.0.1:8001"
 FRONTEND = "http://127.0.0.1:3000"
 
 
+class SmokeFailure(RuntimeError):
+    """Only credential-free diagnostics authored by this harness."""
+
+
 def check(condition: bool, description: str) -> None:
     if not condition:
-        raise RuntimeError(description)
+        raise SmokeFailure(description)
+
+
+def clean_env() -> dict[str, str]:
+    # Never inherit application secrets, proxies, SSH configuration or Python hooks.
+    return {key: os.environ[key] for key in ("PATH", "LANG", "TERM") if key in os.environ}
 
 
 def main() -> None:
@@ -29,6 +38,8 @@ def main() -> None:
     parser.add_argument("--hold", action="store_true", help="Keep services alive after checks until Enter/Ctrl-C, for manual browser inspection.")
     args = parser.parse_args()
     os.umask(0o077)
+    check(not (ROOT / ".env").exists(), "Use a clean checkout without a deployment .env file")
+    check(not any(path.is_file() and path.name.startswith(".env") for path in (ROOT / "frontend").iterdir()), "Use a clean frontend without .env files")
     check((ROOT / "frontend/.next/BUILD_ID").is_file(), "Build the frontend first; see LOCAL_VERIFICATION.md")
     chunks = (ROOT / "frontend/.next/static/chunks").rglob("*.js")
     check(any(f"{API}/api" in path.read_text() for path in chunks), "Frontend must be built with NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api")
@@ -54,8 +65,14 @@ def main() -> None:
             "NEXT_PUBLIC_API_BASE_URL": f"{API}/api",
             "NEXT_TELEMETRY_DISABLED": "1",
             "DEBUG": "false",
+            "SSH_KNOWN_HOSTS_PATH": "",
+            "BOOTSTRAP_ADMIN_USERNAME": "admin",
+            "BOOTSTRAP_ADMIN_PASSWORD": passwords["admin"],
+            "HOME": work,
         }
-        os.environ.update(settings)
+        environment = clean_env() | settings
+        os.environ.clear()
+        os.environ.update(environment)
         sys.path.insert(0, str(ROOT / "backend"))
         # Imports intentionally follow environment setup so no existing DB/config is used.
         import httpx
@@ -70,15 +87,15 @@ def main() -> None:
         Base.metadata.create_all(bind=engine)
         migrate_sqlite_schema()
         with SessionLocal() as db:
-            # Preseed random credentials, so demo passwords never exist in this database.
-            for role, password in passwords.items():
-                db.add(User(username=role, full_name=f"Local smoke {role}", role=role, hashed_password=get_password_hash(password)))
-            db.commit()
+            check(db.query(User).count() == 0, "Refusing to bootstrap an existing database")
             seed_data(db)
+            check([(user.username, user.role) for user in db.query(User)] == [("admin", "admin")], "Secure bootstrap must create only the configured administrator")
+            check(db.query(Credential).count() == 0, "Seed must not create a demo infrastructure credential")
+            for role in ("operator", "viewer"):
+                db.add(User(username=role, full_name=f"Local smoke {role}", role=role, hashed_password=get_password_hash(passwords[role])))
+            db.commit()
             db.query(Node).update({Node.is_enabled: False})
             db.query(NodeHealthCheck).update({NodeHealthCheck.is_enabled: False})
-            for credential in db.query(Credential):
-                credential.secret_value = secrets.token_urlsafe(32)
             db.commit()
 
         def start(name: str, command: list[str], cwd: Path) -> subprocess.Popen:
@@ -100,7 +117,7 @@ def main() -> None:
                     except httpx.TransportError:
                         pass
                     time.sleep(0.2)
-            raise RuntimeError(f"Service readiness timed out: {url}")
+            raise SmokeFailure(f"Service readiness timed out: {url}")
 
         checks = 0
         try:
@@ -156,30 +173,15 @@ def main() -> None:
                 request("GET", "/api/dashboard/metrics?range=invalid", 422, token=admin)
                 print("PASS: health, all three roles, valid/invalid login, demo password rejection, authorization, reads, CORS, safe group CRUD", flush=True)
 
-                enrollment = {"name": "local-smoke-agent", "hostname": "127.0.0.1", "metadata_json": {"environment": "isolated-local-test"}}
-                request("POST", "/api/flock/enroll", 401, base=BROKER, json={**enrollment, "enrollment_token": "invalid-test-token"})
-                enrolled = request("POST", "/api/flock/enroll", base=BROKER, json={**enrollment, "enrollment_token": settings["FLOCK_ENROLLMENT_TOKEN"]}).json()
-                agent_id, agent_token = enrolled["agent_id"], enrolled["agent_token"]
-                with SessionLocal() as db:
-                    db.query(Node).update({Node.is_enabled: False})
-                    db.query(NodeHealthCheck).update({NodeHealthCheck.is_enabled: False})
-                    db.commit()
-                agent_path = f"/api/flock/agents/{agent_id}"
-                request("POST", f"{agent_path}/heartbeat", 401, base=BROKER, json={})
-                request("POST", f"{agent_path}/heartbeat", base=BROKER, token=agent_token, json={"metrics_json": {"local_smoke": True}})
-                check(request("POST", f"{agent_path}/tasks/claim", base=BROKER, token=agent_token).json() is None, "Unexpected queued agent command")
-                agents = request("GET", "/api/flock/agents", token=admin).json()
-                check(len(agents) == 1 and agents[0]["agent_id"] == agent_id, "Broker inventory not visible to API")
-                request("GET", f"/api/flock/agents/{agents[0]['id']}/metrics", token=admin)
-                dispatch = {"target": "flock:nonexistent-local-test-agent", "command": "NOT_EXECUTED"}
-                request("POST", "/api/flock/internal/dispatch", 401, base=BROKER, json=dispatch)
-                no_target = request("POST", "/api/flock/internal/dispatch", base=BROKER, headers={"X-Flock-Internal-Token": settings["FLOCK_INTERNAL_TOKEN"]}, json=dispatch).json()
-                check(no_target["status"] == "failed", "Missing broker target should fail without queueing work")
-                print("PASS: isolated Flock enrollment, authentication, synthetic heartbeat/metrics, inventory, empty task claim, internal-token guard; no agent executed", flush=True)
+                from container_checks import flock_checks
+                flock_checks(request, SessionLocal, broker=BROKER, enrollment_token=settings["FLOCK_ENROLLMENT_TOKEN"], internal_token=settings["FLOCK_INTERNAL_TOKEN"], admin_token=admin, verify=check)
 
                 for path in ("/", "/login", "/messages", "/infrastructure", "/alerts", "/reports", "/settings", "/credentials", "/validations", "/remediations"):
                     html = request("GET", path, base=FRONTEND)
                     check("text/html" in html.headers.get("content-type", ""), f"Frontend route is not HTML: {path}")
+                    if path == "/login":
+                        check(not any(password in html.text for password in ("admin123!", "operator123!", "viewer123!")), "Login page must not expose demo credentials")
+                        check('autocomplete="username"' in html.text.lower() and 'autocomplete="current-password"' in html.text.lower(), "Login must support provisioned accounts and password managers")
                 image = request("GET", "/_next/image?url=%2Fbrand%2Fraven-square-logo.png&w=96&q=75", base=FRONTEND)
                 check(image.headers.get("content-type", "").startswith("image/"), "Image optimizer response missing")
                 print("PASS: 10 frontend HTTP routes and live Next image optimizer", flush=True)
@@ -221,5 +223,6 @@ if __name__ == "__main__":
         raise SystemExit(130)
     except Exception as exc:
         # Do not dump request bodies, credentials, or child-process logs.
-        print(f"Local smoke failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        detail = str(exc) if isinstance(exc, SmokeFailure) else f"{type(exc).__name__}; private details suppressed"
+        print(f"Local smoke failed: {detail}", file=sys.stderr)
         raise SystemExit(1)

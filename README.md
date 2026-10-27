@@ -31,7 +31,7 @@ backend/
     models.py             SQLAlchemy models
     schemas.py            Pydantic request/response schemas
     database.py           database setup and lightweight SQLite migrations
-    seed.py               seeded users, nodes, profiles, and cleanup
+    seed.py               secure initialization, profiles, and cleanup
     main.py               FastAPI backend entrypoint
     main_flock.py         Flock server entrypoint
 frontend/
@@ -51,7 +51,7 @@ docker-compose.yml        backend, runner, Flock, test agent, and frontend deplo
 - Node CRUD, enable/disable, status filtering, drag-and-drop grouping, live status updates, and multi-check health definitions
 - Add/Edit Node execution setup with Runner and Agent tabs plus a health-check table
 - Flock tab for enrolled agents, heartbeat status, policy assignment, latest metrics, linked inventory nodes, and unenrollment
-- Automatic inventory enrollment for Flock agents: each enrolled Linux/Unix agent creates or updates one agent-mode inventory node
+- Automatic inventory enrollment for Flock agents: each new Linux/Unix identity creates one agent-mode inventory node
 - Multiple node health checks with per-check interval, timeout, retry, type-specific config, and worst-check-wins node status
 - Node detail view with live health check, incident, recommendation, and execution history
 - Admin-only credential management with a full-width table layout
@@ -104,10 +104,11 @@ Legacy single-check node fields are still present for compatibility, but the Add
 
 ## Flock Agent Lifecycle
 
-Flock agents currently target Linux/Unix hosts.
+Flock agents currently target Linux/Unix hosts. Read [Flock command and identity
+safeguards](./FLOCK_SECURITY.md) before upgrading the broker or agents.
 
 - Enrollment uses a Flock enrollment token and returns an agent token.
-- Successful enrollment creates or updates one inventory node with `execution_mode="agent"` and `execution_target="flock:<agent-id>"`.
+- New enrollment creates one inventory node with `execution_mode="agent"` and `execution_target="flock:<agent-id>"`. Conflicting names/hostnames are rejected; rejoin requires proof of the existing agent credential and preserves identity.
 - Agent heartbeats report platform metadata, sudo capability, memory, disk, and network metrics.
 - Approved commands for agent-mode nodes are dispatched by the runner to `raven-flock`; the enrolled agent polls, executes locally, and submits output.
 - Admin unenrollment queues an `unenroll` control task. After the agent confirms uninstall, RAVEN removes the Flock agent record, linked auto-created inventory node, queued task, and metrics artifacts.
@@ -122,39 +123,52 @@ RAVEN keeps AI out of the direct execution path:
 - Approved commands are written to `execution_tasks`.
 - The `raven-runner` container polls queued tasks and performs execution.
 - For agent-mode nodes, the runner dispatches approved work to `raven-flock`; enrolled agents poll Flock, execute locally, and return command results.
-- Flock agents are expected to be installed with sudo permissions for local status polling and approved command execution.
+- Flock agents run reviewed exact-argument commands without a shell or automatic sudo. Use least-privilege service accounts and explicitly enabled allowlists; empty/missing/disabled policies deny commands. See [FLOCK_SECURITY.md](./FLOCK_SECURITY.md).
 - Frontend code never executes shell commands.
 - Command execution records include command preview, exit code, output, and post-action validation.
 - OpenAI calls are limited to incident recommendation generation, validation-output evaluation, automation gate selection, and user/operator-prompted follow-up workflows.
 
 The runner currently treats exit codes `0` and `3` as successful command completions. Post-action validation still determines whether the incident appears resolved.
 
-## Seeded Users
+## Secure First Run
 
-- `admin / admin123!`
-- `operator / operator123!`
-- `viewer / viewer123!`
+There are **no default login credentials or working demo tokens**. Start from a
+private terminal and provision an administrator before starting listeners:
 
-Change these before any shared or persistent deployment.
+```bash
+python3 scripts/bootstrap_env.py
+docker compose build
+docker compose run --rm --no-deps backend python -m app.bootstrap init-admin
+docker compose up -d
+```
+
+The helper writes fresh random secrets to ignored `.env` with mode `0600`, never
+prints them, and refuses to overwrite an existing file. The administrator command
+privately prompts for your chosen username/password and stores only a hash. Log
+in with that account; do not copy `.env.example` and expect it to run.
+
+**Existing deployments:** read [secure bootstrap and upgrade instructions](./SECURITY_BOOTSTRAP.md)
+before restarting. Missing/placeholder secrets and still-enabled legacy demo
+credentials fail closed. Offline migration preserves records and changed users;
+there is no automatic password reset or account reactivation.
 
 ## Environment
 
-Create a local environment file:
+See `.env.example` for the configuration reference and [SECURITY_BOOTSTRAP.md](./SECURITY_BOOTSTRAP.md)
+for secure generation, secret rotation, and noninteractive initial provisioning.
 
-```bash
-cp .env.example .env
-```
+- `JWT_SECRET_KEY` and `FLOCK_INTERNAL_TOKEN`: required independent private random secrets, at least 32 characters.
+- `FLOCK_ENROLLMENT_TOKEN`: optional private enrollment secret (32–72 UTF-8 bytes); only creates the initial enrollment record if absent. Environment changes never rotate or re-enable existing records.
+- `OPENAI_API_KEY`: optional; unset uses deterministic fallback recommendations.
+- `OPENAI_MODEL`: recommendation model.
+- `FRONTEND_ORIGIN`: `http://localhost:3000` for local Compose.
+- `EMBEDDED_MONITORING`: disabled by default in bootstrap/Compose; enable only after reviewing inventory and targets.
+- `FLOCK_AGENT_STATE_PATH`: protected enrolled agent ID/token storage.
+- `SSH_KNOWN_HOSTS_PATH`: administrator-provisioned absolute known-hosts path, required only for SSH execution; see [SSH_HOST_VERIFICATION.md](./SSH_HOST_VERIFICATION.md).
 
-Important values:
-
-- `OPENAI_API_KEY`: enables live AI recommendations. If unset, RAVEN uses deterministic fallback recommendations.
-- `OPENAI_MODEL`: model used by the recommendation service.
-- `FRONTEND_ORIGIN`: keep as `http://localhost:3000` for Docker Compose.
-- `FLOCK_INTERNAL_TOKEN`: shared internal token used by the runner to dispatch work to `raven-flock`.
-- `FLOCK_ENROLLMENT_TOKEN`: enrollment token used by Linux/Unix agents during first join. Compose seeds `dev-flock-enrollment-token` for local development.
-- `FLOCK_AGENT_STATE_PATH`: local path where a Flock agent stores its enrolled agent ID/token.
-
-Docker Compose overrides `DATABASE_URL` to `sqlite:////data/raven.db` so backend, runner, and Flock share state through the `raven-data` volume.
+Compose overrides `DATABASE_URL` to `sqlite:////data/raven.db` so backend, runner,
+and Flock share the `raven-data` volume. It does not override your secrets with
+fixed values. Avoid printing Compose's resolved configuration: it contains secrets.
 
 ## Isolated Local Verification
 
@@ -162,7 +176,8 @@ For disposable, loopback-only dependency/runtime checks without Docker, see [LOC
 
 ## Docker Compose Deployment
 
-The intended local deployment path is Docker Compose.
+The intended local deployment path is Docker Compose. Complete Secure First Run
+above first; existing databases require the documented preflight migration.
 
 ```bash
 docker compose up --build -d --remove-orphans
@@ -173,7 +188,7 @@ Services:
 - `raven-backend`: FastAPI API plus embedded monitoring loop
 - `raven-runner`: approved command execution daemon
 - `raven-flock`: Flock enrollment, heartbeat, policy, and task broker server
-- `flock-test`: Linux/Unix development agent that enrolls with `raven-flock`; restart is disabled so unenrollment leaves it stopped
+- `flock-test`: optional Linux/Unix development agent (`docker compose --profile agent up -d flock-test`); restart is disabled so unenrollment leaves it stopped
 - `raven-frontend`: Next.js UI
 
 Open:
@@ -190,33 +205,12 @@ docker compose exec -T flock curl -fsS http://localhost:8000/api/health
 docker compose exec -T backend curl -fsSI http://frontend:3000/messages
 ```
 
-Verify local Flock join and execution:
-
-```bash
-docker compose logs --tail=80 flock-test
-docker compose exec -T flock curl -fsS \
-  -H 'Content-Type: application/json' \
-  -H 'X-Flock-Internal-Token: dev-flock-internal-token' \
-  -d '{"target":"flock:flock-test","command":"uname -s","timeout_seconds":30}' \
-  http://localhost:8000/api/flock/internal/dispatch
-```
-
-Successful local dispatch returns a JSON response with `status: "success"`, `exit_code: 0`, and Linux/Unix command output.
-
-Verify local Flock unenrollment cleanup:
-
-```bash
-TOKEN=$(docker compose exec -T backend curl -fsS \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin123!"}' \
-  http://localhost:8000/api/auth/login | python -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
-
-docker compose exec -T backend curl -fsS -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8000/api/flock/agents/{agent_row_id}/unenroll
-```
-
-After the agent processes the control task, `docker inspect flock-test --format '{{.State.Status}} {{.RestartCount}}'` should show `exited 0`, and the Flock agent plus linked auto-created inventory node should be removed from the UI/API.
+Verify Flock enrollment in the authenticated Flock UI. New policies deny all
+commands until an administrator configures an explicit allowlist. Test only a
+reviewed non-destructive command against a disposable agent; denied commands
+must remain denied. Do not paste internal tokens or passwords into command lines.
+Use authenticated Flock management to unenroll a test agent; after it processes
+the control task, it should exit and its auto-created inventory should disappear.
 
 Stop:
 
@@ -224,7 +218,7 @@ Stop:
 docker compose down
 ```
 
-Remove persisted SQLite data too:
+**Destructive reset only, never an upgrade:** remove persisted SQLite data too:
 
 ```bash
 docker compose down -v
@@ -232,13 +226,16 @@ docker compose down -v
 
 ## Local Non-Docker Development
 
-Backend:
+Set `FLOCK_SERVER_URL=http://localhost:8001/api/flock` in the private root `.env`
+for the local backend/runner. Backend:
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install --require-hashes --only-binary=:all: -r requirements.txt
+# After creating the root .env with scripts/bootstrap_env.py:
+python -m app.bootstrap init-admin
 uvicorn app.main:app --reload
 ```
 
@@ -258,13 +255,14 @@ source .venv/bin/activate
 uvicorn app.main_flock:app --reload --port 8001
 ```
 
-Linux/Unix Flock agent in another shell:
+Linux/Unix Flock agent in another shell (after setting the private enrollment
+configuration and a writable protected state path; never share control-plane
+JWT/internal secrets with an external agent):
 
 ```bash
 cd backend
 source .venv/bin/activate
 FLOCK_SERVER_URL=http://localhost:8001/api/flock \
-FLOCK_ENROLLMENT_TOKEN=dev-flock-enrollment-token \
 FLOCK_AGENT_NAME=flock-test \
 python -m app.services.flock_agent
 ```
@@ -295,7 +293,6 @@ docker compose ps
 docker compose exec -T backend curl -fsS http://localhost:8000/api/health
 docker compose exec -T flock curl -fsS http://localhost:8000/api/health
 docker compose exec -T backend curl -fsSI http://frontend:3000/messages
-docker compose exec -T flock curl -fsS -H 'Content-Type: application/json' -H 'X-Flock-Internal-Token: dev-flock-internal-token' -d '{"target":"flock:flock-test","command":"uname -s","timeout_seconds":30}' http://localhost:8000/api/flock/internal/dispatch
 ```
 
 For Flock lifecycle work, also verify enrollment creates exactly one agent-mode node, metrics are stored, unenrollment removes the agent/node/task/metric artifacts, and `flock-test` remains stopped.
@@ -384,7 +381,7 @@ Examples:
 - `api:https://runner.example.internal:raven-api`
 - `flock:flock-test`
 
-The seeded MVP data uses `local:raven-backend`. Agent-mode nodes can use `flock:<agent-id-or-name>` to route approved commands through `raven-flock` to an enrolled Linux/Unix agent.
+Runner-mode nodes can use `local:raven-backend`. Agent-mode nodes can use `flock:<agent-id-or-name>` to route approved commands through `raven-flock` to an enrolled Linux/Unix agent.
 
 ## Current Limitations
 
@@ -392,7 +389,7 @@ The seeded MVP data uses `local:raven-backend`. Agent-mode nodes can use `flock:
 - The monitoring loop currently runs inside the backend process.
 - The runner executes commands available inside its own container or through SSH/API targets.
 - The Flock agent workflow currently targets Linux/Unix. Windows enrollment and service installation are planned later.
-- Local Compose uses development Flock tokens. Replace them before any shared or persistent deployment.
+- Local Compose is loopback-only and not a production deployment. Follow [SECURITY_BOOTSTRAP.md](./SECURITY_BOOTSTRAP.md) for secret management, legacy migration, and deployment caveats.
 - Flock metrics and control tasks use the shared SQLite MVP database. PostgreSQL will be a better fit for larger concurrent agent fleets.
 - Managing host Docker or host services from the runner requires explicit host integration.
 - AI command proposals should still be reviewed carefully before approval.

@@ -4,10 +4,8 @@ import json
 import platform
 import shlex
 import subprocess
-import tempfile
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from urllib.parse import urljoin
 
 import httpx
@@ -33,6 +31,7 @@ from app.models import (
     utcnow,
 )
 from app.services.ai_service import AIRecommendationService
+from app.services.ssh_execution import run_ssh
 
 ai_service = AIRecommendationService()
 settings = get_settings()
@@ -60,12 +59,17 @@ class ParsedTarget:
 
 def parse_target(raw_target: str) -> ParsedTarget:
     parts = raw_target.split(":", 2)
-    if len(parts) == 1:
+    if len(parts) == 1 and parts[0] != "ssh":
         return ParsedTarget(transport="local", location=None, subject=raw_target)
     if parts[0] == "local" and len(parts) == 2:
         return ParsedTarget(transport="local", location=None, subject=parts[1])
-    if parts[0] in {"ssh", "api"} and len(parts) == 3:
-        return ParsedTarget(transport=parts[0], location=parts[1], subject=parts[2])
+    if parts[0] == "ssh":
+        # A malformed SSH target must never fall back to local execution.
+        if len(parts) != 3 or not parts[1] or not parts[2]:
+            return ParsedTarget(transport="ssh", location=None, subject="")
+        return ParsedTarget(transport="ssh", location=parts[1], subject=parts[2])
+    if parts[0] == "api" and len(parts) == 3:
+        return ParsedTarget(transport="api", location=parts[1], subject=parts[2])
     return ParsedTarget(transport="local", location=None, subject=raw_target)
 
 
@@ -115,52 +119,11 @@ def _run_subprocess(command: list[str], timeout: int) -> tuple[int, str]:
 
 
 def _run_ssh(location: str, command: str, credential: Credential | None, timeout: int) -> tuple[int, str]:
-    if not credential or credential.kind not in {"ssh_key", "ssh_password"}:
-        return 1, "SSH validation requires an ssh_key or ssh_password credential."
-
-    username = credential.username or "root"
-    if credential.kind == "ssh_password":
-        return _run_subprocess(
-            [
-                "sshpass",
-                "-p",
-                credential.secret_value,
-                "ssh",
-                "-o",
-                "StrictHostKeyChecking=no",
-                "-o",
-                "PreferredAuthentications=password",
-                "-o",
-                "PubkeyAuthentication=no",
-                f"{username}@{location}",
-                command,
-            ],
-            timeout,
-        )
-
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as handle:
-        handle.write(credential.secret_value)
-        key_path = Path(handle.name)
-    key_path.chmod(0o600)
-    try:
-        return _run_subprocess(
-            [
-                "ssh",
-                "-i",
-                str(key_path),
-                "-o",
-                "StrictHostKeyChecking=no",
-                "-o",
-                "PreferredAuthentications=publickey",
-                "-o",
-                "PasswordAuthentication=no",
-                f"{username}@{location}",
-                command,
-            ],
-            timeout,
-        )
-    finally:
-        key_path.unlink(missing_ok=True)
+    return run_ssh(
+        location, command, credential,
+        known_hosts_path=settings.ssh_known_hosts_path,
+        timeout=timeout,
+    )
 
 
 def _run_api(endpoint: str, subject: str, command: str, credential: Credential | None, timeout: int) -> tuple[int, str]:
@@ -216,7 +179,9 @@ def _dispatch_validation_command(db: Session, node: Node, command: str, timeout:
         return _run_flock(node.execution_target, command, timeout)
 
     parsed = parse_target(node.execution_target)
-    if parsed.transport == "ssh" and parsed.location:
+    if parsed.transport == "ssh":
+        if not parsed.location:
+            return 1, "SSH execution target must be ssh:[user@]host:subject."
         return _run_ssh(parsed.location, command, credential, timeout)
     if parsed.transport == "api" and parsed.location:
         return _run_api(parsed.location, parsed.subject, command, credential, timeout)

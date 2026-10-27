@@ -9,8 +9,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123!");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -73,28 +73,21 @@ export default function LoginPage() {
         <section className="rounded-[2rem] border border-slate-800 bg-[#050814] p-8 text-white shadow-panel dark:border-slate-800 dark:bg-[#050814] dark:shadow-none lg:min-h-[600px]">
           <p className="text-xs uppercase tracking-[0.35em] text-white/60">Access</p>
           <h2 className="mt-4 text-3xl font-semibold">Sign in to the control plane</h2>
-          <p className="mt-3 text-sm text-white/70">Seeded accounts are available for the MVP. Change them before any shared deployment.</p>
+          <p className="mt-3 text-sm text-white/70">Use the account provisioned by your RAVEN administrator.</p>
           <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
             <label className="block text-sm">
               <span className="mb-2 block text-white/70">Username</span>
-              <input value={username} onChange={(event) => setUsername(event.target.value)} className="w-full rounded-2xl border border-slate-700 bg-[#0B1020] px-4 py-3 text-white caret-white outline-none focus:border-ember" />
+              <input autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} className="w-full rounded-2xl border border-slate-700 bg-[#0B1020] px-4 py-3 text-white caret-white outline-none focus:border-ember" />
             </label>
             <label className="block text-sm">
               <span className="mb-2 block text-white/70">Password</span>
-              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-2xl border border-slate-700 bg-[#0B1020] px-4 py-3 text-white caret-white outline-none focus:border-ember" />
+              <input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-2xl border border-slate-700 bg-[#0B1020] px-4 py-3 text-white caret-white outline-none focus:border-ember" />
             </label>
             {error ? <p className="rounded-2xl bg-rose-500/15 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
             <button disabled={loading} className="w-full rounded-full bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:text-ember">
               {loading ? "Signing in..." : "Sign in"}
             </button>
           </form>
-
-          <div className="mt-8 rounded-3xl border border-slate-800 bg-[#0B1020] p-5 text-sm text-white/70">
-            <p className="font-semibold text-white">Seed credentials</p>
-            <p className="mt-2">`admin / admin123!`</p>
-            <p>`operator / operator123!`</p>
-            <p>`viewer / viewer123!`</p>
-          </div>
         </section>
       </div>
     </div>
